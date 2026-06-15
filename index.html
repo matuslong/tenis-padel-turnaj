@@ -1,0 +1,1446 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenis + Padel turnaj</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f2;
+      --surface: #ffffff;
+      --surface-2: #eef3ee;
+      --ink: #17211c;
+      --muted: #62706a;
+      --line: #d8dfd9;
+      --accent: #0f8f6f;
+      --accent-dark: #08664f;
+      --warn: #b75f18;
+      --danger: #b3261e;
+      --shadow: 0 10px 28px rgba(23, 33, 28, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      min-height: 44px;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: var(--surface);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    button.ghost {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid transparent;
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    input {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .app-shell {
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(247, 247, 242, 0.96);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 12px 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .brand {
+      display: grid;
+      gap: 2px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      line-height: 1.15;
+    }
+
+    .brand span,
+    .saved {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .phase-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+
+    .phase-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .phase-tab {
+      flex: 0 0 auto;
+      min-height: 38px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .phase-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 14px 80px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel,
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 14px;
+    }
+
+    .panel h2,
+    .section-title h2 {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1.25;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 4px 0 8px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 0.86rem;
+    }
+
+    .setup-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .leader-mini {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .leader-chip {
+      min-width: 0;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    .leader-chip strong,
+    .match-name,
+    .player-name {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .leader-chip span {
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .score-table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+
+    .score-table th,
+    .score-table td {
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      font-size: 0.9rem;
+      vertical-align: middle;
+    }
+
+    .score-table th {
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-transform: uppercase;
+    }
+
+    .score-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .match-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .match-card {
+      width: 100%;
+      text-align: left;
+      padding: 0;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .match-card[disabled] {
+      opacity: 0.78;
+      background: var(--surface-2);
+    }
+
+    .match-body {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .match-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .teams {
+      display: grid;
+      gap: 8px;
+    }
+
+    .team-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .team-row strong {
+      font-size: 0.98rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge.good {
+      background: #e1f4ec;
+      color: var(--accent-dark);
+    }
+
+    .badge.warn {
+      background: #fff1df;
+      color: var(--warn);
+    }
+
+    .two-col {
+      display: grid;
+      gap: 14px;
+    }
+
+    .group-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .empty {
+      padding: 16px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.52);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      align-items: flex-end;
+      background: rgba(23, 33, 28, 0.48);
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      width: 100%;
+      max-height: 92vh;
+      overflow: auto;
+      background: var(--surface);
+      border-radius: 12px 12px 0 0;
+      padding: 16px;
+      box-shadow: 0 -14px 38px rgba(0, 0, 0, 0.18);
+    }
+
+    .modal h2 {
+      margin: 0 0 4px;
+      font-size: 1.15rem;
+    }
+
+    .score-entry {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    .score-entry label {
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .error {
+      display: none;
+      margin-top: 12px;
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .error.show {
+      display: block;
+    }
+
+    .footer-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .footer-actions.three {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    @media (min-width: 720px) {
+      .topbar-inner {
+        grid-template-columns: minmax(240px, 1fr) minmax(360px, 2fr);
+        align-items: center;
+      }
+
+      .phase-tabs {
+        justify-content: flex-end;
+      }
+
+      .setup-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .two-col,
+      .group-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .modal-backdrop {
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .modal {
+        max-width: 560px;
+        border-radius: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand-row">
+          <div class="brand">
+            <h1>Tenis + Padel turnaj</h1>
+            <span id="phaseLabel">Príprava</span>
+          </div>
+          <span class="saved" id="saveStatus">offline</span>
+        </div>
+        <nav class="phase-tabs" id="tabs" aria-label="Fázy turnaja"></nav>
+      </div>
+    </header>
+
+    <main id="app"></main>
+  </div>
+
+  <div class="modal-backdrop" id="scoreModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <h2 id="modalTitle">Výsledok</h2>
+      <p class="muted small" id="modalSubtitle"></p>
+      <form id="scoreForm"></form>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const STORAGE_KEY = "tenis-padel-turnaj-v1";
+      const TENNIS_POINTS = { 1: 12, 2: 10, 3: 8, 4: 7, 5: 5, 6: 4, 7: 2, 8: 1 };
+      const TABS = [
+        ["setup", "Setup"],
+        ["groups", "Skupiny"],
+        ["playoff", "Playoff"],
+        ["padel", "Padel"],
+        ["leaderboard", "Tabuľka"]
+      ];
+
+      const app = document.getElementById("app");
+      const tabsEl = document.getElementById("tabs");
+      const phaseLabel = document.getElementById("phaseLabel");
+      const saveStatus = document.getElementById("saveStatus");
+      const modal = document.getElementById("scoreModal");
+      const modalTitle = document.getElementById("modalTitle");
+      const modalSubtitle = document.getElementById("modalSubtitle");
+      const scoreForm = document.getElementById("scoreForm");
+
+      let state = loadState();
+      let activeTab = state.setupDone ? "groups" : "setup";
+
+      function emptyState() {
+        return {
+          version: 1,
+          setupDone: false,
+          players: [],
+          groups: { A: [], B: [] },
+          tennisMatches: [],
+          padelMatches: [],
+          padelTargetRounds: 13,
+          createdAt: new Date().toISOString()
+        };
+      }
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return emptyState();
+          const parsed = JSON.parse(raw);
+          return { ...emptyState(), ...parsed };
+        } catch {
+          return emptyState();
+        }
+      }
+
+      function saveState() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        saveStatus.textContent = "uložené";
+        window.setTimeout(() => {
+          saveStatus.textContent = "offline";
+        }, 900);
+      }
+
+      function render() {
+        ensurePlayoff();
+        ensurePadelNextRound();
+        renderTabs();
+        phaseLabel.textContent = getPhaseLabel();
+        if (!state.setupDone) {
+          activeTab = "setup";
+          renderSetup();
+          return;
+        }
+        if (activeTab === "setup") activeTab = "groups";
+        if (activeTab === "groups") renderGroups();
+        if (activeTab === "playoff") renderPlayoff();
+        if (activeTab === "padel") renderPadel();
+        if (activeTab === "leaderboard") renderLeaderboardPage();
+      }
+
+      function renderTabs() {
+        tabsEl.innerHTML = "";
+        TABS.forEach(([id, label]) => {
+          if (!state.setupDone && id !== "setup") return;
+          if (state.setupDone && id === "setup") return;
+          const button = document.createElement("button");
+          button.className = `phase-tab${activeTab === id ? " active" : ""}`;
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", () => {
+            activeTab = id;
+            render();
+          });
+          tabsEl.appendChild(button);
+        });
+      }
+
+      function getPhaseLabel() {
+        if (!state.setupDone) return "Príprava hráčov";
+        if (!allGroupMatchesComplete()) return "Tenis - skupiny";
+        if (!allPlayoffComplete()) return "Tenis - playoff";
+        if (state.padelMatches.filter((m) => m.result).length < state.padelTargetRounds) return "Padel Americano";
+        return "Celkové výsledky";
+      }
+
+      function renderSetup() {
+        app.innerHTML = `
+          <section class="panel">
+            <h2>Hráči</h2>
+            <p class="muted small">Zadaj presne 8 mien. Po štarte sa hráči náhodne rozdelia do skupín A a B.</p>
+            <form id="setupForm">
+              <div class="setup-grid">
+                ${Array.from({ length: 8 }, (_, i) => `
+                  <input required maxlength="32" name="player${i}" placeholder="Hráč ${i + 1}" autocomplete="off">
+                `).join("")}
+              </div>
+              <div class="actions">
+                <button type="submit">Rozlosovať turnaj</button>
+              </div>
+            </form>
+          </section>
+        `;
+        document.getElementById("setupForm").addEventListener("submit", (event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const names = Array.from({ length: 8 }, (_, i) => String(form.get(`player${i}`)).trim());
+          const unique = new Set(names.map((name) => name.toLocaleLowerCase("sk")));
+          if (names.some((name) => !name) || unique.size !== 8) {
+            window.alert("Zadaj 8 neprázdnych a rozdielnych mien.");
+            return;
+          }
+          startTournament(names);
+        });
+      }
+
+      function startTournament(names) {
+        const players = shuffle(names).map((name, index) => ({
+          id: `p${index + 1}`,
+          name,
+          drawIndex: index
+        }));
+        const groupA = players.slice(0, 4).map((p) => p.id);
+        const groupB = players.slice(4, 8).map((p) => p.id);
+        state = {
+          ...emptyState(),
+          setupDone: true,
+          players,
+          groups: { A: groupA, B: groupB },
+          tennisMatches: createGroupMatches(groupA, groupB)
+        };
+        activeTab = "groups";
+        saveState();
+        render();
+      }
+
+      function renderGroups() {
+        const matches = state.tennisMatches.filter((m) => m.phase === "group");
+        app.innerHTML = `
+          ${renderLeaderMini()}
+          <div class="group-grid">
+            ${renderGroupPanel("A")}
+            ${renderGroupPanel("B")}
+          </div>
+          <section class="grid" style="margin-top:14px">
+            ${renderMatchSection("Zápasy na zadanie", matches.filter((m) => !m.result), "Žiadny skupinový zápas nečaká na výsledok.")}
+            ${renderMatchSection("Dokončené zápasy", matches.filter((m) => m.result), "Zatiaľ nie je uložený žiadny výsledok.")}
+          </section>
+          ${renderAdminPanel()}
+        `;
+        bindMatchButtons();
+        bindAdminButtons();
+      }
+
+      function renderGroupPanel(group) {
+        const rows = getGroupStandings(group);
+        return `
+          <section class="panel">
+            <div class="section-title">
+              <h2>Skupina ${group}</h2>
+              <span class="badge">${rows.filter((r) => r.played === 3).length}/4 hotovo</span>
+            </div>
+            <table class="score-table">
+              <thead>
+                <tr><th>#</th><th>Hráč</th><th>V</th><th>R</th><th>Body</th></tr>
+              </thead>
+              <tbody>
+                ${rows.map((row, index) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td class="player-name">${escapeHtml(getPlayer(row.id).name)}</td>
+                    <td>${row.wins}</td>
+                    <td>${signed(row.diff)}</td>
+                    <td>${row.for}:${row.against}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </section>
+        `;
+      }
+
+      function renderPlayoff() {
+        const groupDone = allGroupMatchesComplete();
+        const matches = state.tennisMatches.filter((m) => m.phase === "playoff");
+        app.innerHTML = `
+          ${renderLeaderMini()}
+          ${!groupDone ? `<section class="empty">Playoff sa naplní po dokončení všetkých skupinových zápasov.</section>` : ""}
+          <section class="grid">
+            ${renderTennisPlacements()}
+            ${renderMatchSection("Zápasy na zadanie", matches.filter((m) => !m.result), "Playoff je dokončené alebo ešte nepozná hráčov.")}
+            ${renderMatchSection("Dokončené zápasy", matches.filter((m) => m.result), "Zatiaľ nie je uložený žiadny playoff výsledok.")}
+          </section>
+          ${renderAdminPanel()}
+        `;
+        bindMatchButtons();
+        bindAdminButtons();
+      }
+
+      function renderPadel() {
+        const completed = state.padelMatches.filter((m) => m.result);
+        const pending = state.padelMatches.filter((m) => !m.result);
+        app.innerHTML = `
+          ${renderLeaderMini()}
+          <section class="panel">
+            <div class="section-title">
+              <h2>Padel Americano</h2>
+              <span class="badge">${completed.length}/${state.padelTargetRounds} kôl</span>
+            </div>
+            <p class="muted small">Skóre z každého zápasu sa pripočíta obom hráčom v dvojici. Ďalšie kolo sa vytvorí po uložení aktuálneho výsledku.</p>
+          </section>
+          <section class="grid" style="margin-top:14px">
+            ${renderPadelStandings()}
+            ${renderMatchSection("Aktuálne kolo", pending, "Všetky padel kolá sú dokončené.")}
+            ${renderMatchSection("Odohrané kolá", completed, "Zatiaľ nie je uložený žiadny padel výsledok.")}
+          </section>
+          ${renderAdminPanel()}
+        `;
+        bindMatchButtons();
+        bindAdminButtons();
+      }
+
+      function renderLeaderboardPage() {
+        app.innerHTML = `
+          ${renderLeaderMini()}
+          <section class="panel" style="margin-top:14px">
+            <div class="section-title">
+              <h2>Celková tabuľka</h2>
+              <span class="badge good">live</span>
+            </div>
+            ${renderLeaderboardTable()}
+          </section>
+          ${renderTennisPlacements()}
+          ${renderAdminPanel()}
+        `;
+        bindAdminButtons();
+      }
+
+      function renderLeaderMini() {
+        const leaders = getOverallLeaderboard().slice(0, 3);
+        return `
+          <section class="leader-mini" aria-label="Top hráči">
+            ${leaders.map((row, index) => `
+              <div class="leader-chip">
+                <span>${index + 1}. miesto</span>
+                <strong>${escapeHtml(row.name)}</strong>
+                <span>${row.total} bodov</span>
+              </div>
+            `).join("")}
+          </section>
+        `;
+      }
+
+      function renderLeaderboardTable() {
+        return `
+          <table class="score-table">
+            <thead>
+              <tr><th>#</th><th>Hráč</th><th>Tenis</th><th>Padel</th><th>Spolu</th></tr>
+            </thead>
+            <tbody>
+              ${getOverallLeaderboard().map((row, index) => `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td class="player-name">${escapeHtml(row.name)}</td>
+                  <td>${row.tennis}</td>
+                  <td>${row.padel}</td>
+                  <td><strong>${row.total}</strong></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+      }
+
+      function renderPadelStandings() {
+        const stats = getPadelStats();
+        return `
+          <section class="panel">
+            <div class="section-title">
+              <h2>Padel body</h2>
+            </div>
+            <table class="score-table">
+              <thead>
+                <tr><th>#</th><th>Hráč</th><th>Zápasy</th><th>Body</th></tr>
+              </thead>
+              <tbody>
+                ${stats.map((row, index) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td class="player-name">${escapeHtml(getPlayer(row.id).name)}</td>
+                    <td>${row.games}</td>
+                    <td><strong>${row.points}</strong></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </section>
+        `;
+      }
+
+      function renderTennisPlacements() {
+        const placements = getTennisPlacements();
+        if (!placements.length) {
+          return `<section class="empty">Tenisové body sa zobrazia po dokončení playoff.</section>`;
+        }
+        return `
+          <section class="panel" style="margin-top:14px">
+            <div class="section-title">
+              <h2>Tenisové umiestnenie</h2>
+            </div>
+            <table class="score-table">
+              <thead>
+                <tr><th>Miesto</th><th>Hráč</th><th>Body</th></tr>
+              </thead>
+              <tbody>
+                ${placements.map((row) => `
+                  <tr>
+                    <td>${row.place}.</td>
+                    <td class="player-name">${escapeHtml(getPlayer(row.id).name)}</td>
+                    <td><strong>${TENNIS_POINTS[row.place]}</strong></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </section>
+        `;
+      }
+
+      function renderMatchSection(title, matches, emptyText) {
+        const visible = matches.filter((match) => match.phase !== "playoff" || canResolveMatch(match));
+        const hidden = matches.length - visible.length;
+        return `
+          <section>
+            <div class="section-title">
+              <h2>${title}</h2>
+              <span class="badge">${visible.length}${hidden ? ` + ${hidden} čaká` : ""}</span>
+            </div>
+            ${visible.length ? `<div class="match-list">${visible.map(renderMatchCard).join("")}</div>` : `<div class="empty">${emptyText}</div>`}
+          </section>
+        `;
+      }
+
+      function renderMatchCard(match) {
+        const resolved = resolveMatchPlayers(match);
+        const isReady = resolved.every(Boolean);
+        const score = formatResult(match);
+        const meta = match.phase === "padel" ? `Kolo ${match.round}` : match.label;
+        return `
+          <button class="match-card" type="button" data-match-id="${match.id}" ${isReady ? "" : "disabled"}>
+            <div class="match-body">
+              <div class="match-meta">
+                <span>${escapeHtml(meta)}</span>
+                <span class="badge ${match.result ? "good" : isReady ? "warn" : ""}">${match.result ? "hotovo" : isReady ? "zadať" : "čaká"}</span>
+              </div>
+              <div class="teams">
+                <div class="team-row">
+                  <strong class="match-name">${escapeHtml(teamName(resolved[0]))}</strong>
+                  <span>${score ? score.left : ""}</span>
+                </div>
+                <div class="team-row">
+                  <strong class="match-name">${escapeHtml(teamName(resolved[1]))}</strong>
+                  <span>${score ? score.right : ""}</span>
+                </div>
+              </div>
+            </div>
+          </button>
+        `;
+      }
+
+      function renderAdminPanel() {
+        return `
+          <section class="panel" style="margin-top:14px">
+            <div class="section-title">
+              <h2>Správa</h2>
+            </div>
+            <div class="actions">
+              <button class="secondary" type="button" id="exportState">Export dát</button>
+              <button class="danger" type="button" id="resetTournament">Reset turnaja</button>
+            </div>
+          </section>
+        `;
+      }
+
+      function bindMatchButtons() {
+        document.querySelectorAll("[data-match-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const match = getMatch(button.dataset.matchId);
+            if (match && canResolveMatch(match)) openScoreModal(match);
+          });
+        });
+      }
+
+      function bindAdminButtons() {
+        const reset = document.getElementById("resetTournament");
+        if (reset) {
+          reset.addEventListener("click", () => {
+            if (!window.confirm("Naozaj vymazať celý turnaj z tohto prehliadača?")) return;
+            state = emptyState();
+            localStorage.removeItem(STORAGE_KEY);
+            activeTab = "setup";
+            render();
+          });
+        }
+        const exportButton = document.getElementById("exportState");
+        if (exportButton) {
+          exportButton.addEventListener("click", async () => {
+            const text = JSON.stringify(state, null, 2);
+            try {
+              await navigator.clipboard.writeText(text);
+              window.alert("Dáta sú skopírované v schránke.");
+            } catch {
+              window.prompt("Skopíruj dáta turnaja:", text);
+            }
+          });
+        }
+      }
+
+      function openScoreModal(match) {
+        const resolved = resolveMatchPlayers(match);
+        const existing = match.result || {};
+        modalTitle.textContent = match.phase === "padel" ? `Padel - kolo ${match.round}` : match.label;
+        modalSubtitle.textContent = `${teamName(resolved[0])} vs ${teamName(resolved[1])}`;
+        scoreForm.innerHTML = buildScoreForm(match, resolved, existing);
+        modal.classList.add("open");
+        scoreForm.querySelector("input")?.focus();
+        scoreForm.onsubmit = (event) => {
+          event.preventDefault();
+          const result = readAndValidateResult(match, new FormData(scoreForm));
+          const error = scoreForm.querySelector(".error");
+          if (!result.ok) {
+            error.textContent = result.message;
+            error.classList.add("show");
+            return;
+          }
+          const message = `Uložiť výsledok ${teamName(resolved[0])} ${result.result.scoreLabel} ${teamName(resolved[1])}?`;
+          if (!window.confirm(message)) return;
+          if (!prepareForResultChange(match)) return;
+          match.result = {
+            ...result.result,
+            savedAt: new Date().toISOString()
+          };
+          saveState();
+          closeModal();
+          render();
+        };
+        const cancel = scoreForm.querySelector("[data-cancel]");
+        cancel.addEventListener("click", closeModal);
+        const clear = scoreForm.querySelector("[data-clear]");
+        if (clear) {
+          clear.addEventListener("click", () => {
+            if (!window.confirm("Vymazať uložený výsledok tohto zápasu?")) return;
+            if (!prepareForResultChange(match)) return;
+            delete match.result;
+            saveState();
+            closeModal();
+            render();
+          });
+        }
+      }
+
+      function buildScoreForm(match, resolved, existing) {
+        if (match.format === "set4") {
+          return `
+            <div class="score-entry">
+              <label>${escapeHtml(teamName(resolved[0]))} - gemy</label>
+              <input inputmode="numeric" pattern="[0-9]*" name="games1" value="${existing.games1 ?? ""}" required>
+            </div>
+            <div class="score-entry">
+              <label>${escapeHtml(teamName(resolved[1]))} - gemy</label>
+              <input inputmode="numeric" pattern="[0-9]*" name="games2" value="${existing.games2 ?? ""}" required>
+            </div>
+            <div class="score-entry">
+              <label>Tiebreak hráč 1</label>
+              <input inputmode="numeric" pattern="[0-9]*" name="tb1" value="${existing.tb1 ?? ""}" placeholder="iba pri 4:4">
+            </div>
+            <div class="score-entry">
+              <label>Tiebreak hráč 2</label>
+              <input inputmode="numeric" pattern="[0-9]*" name="tb2" value="${existing.tb2 ?? ""}" placeholder="iba pri 4:4">
+            </div>
+            <p class="error"></p>
+            ${modalActions(Boolean(match.result))}
+          `;
+        }
+        return `
+          <div class="score-entry">
+            <label>${escapeHtml(teamName(resolved[0]))}</label>
+            <input inputmode="numeric" pattern="[0-9]*" name="score1" value="${existing.score1 ?? ""}" required>
+          </div>
+          <div class="score-entry">
+            <label>${escapeHtml(teamName(resolved[1]))}</label>
+            <input inputmode="numeric" pattern="[0-9]*" name="score2" value="${existing.score2 ?? ""}" required>
+          </div>
+          <p class="error"></p>
+          ${modalActions(Boolean(match.result))}
+        `;
+      }
+
+      function modalActions(hasResult) {
+        return `
+          <div class="footer-actions ${hasResult ? "three" : ""}">
+            <button type="button" class="secondary" data-cancel>Zrušiť</button>
+            ${hasResult ? `<button type="button" class="danger" data-clear>Vymazať</button>` : ""}
+            <button type="submit">Uložiť</button>
+          </div>
+        `;
+      }
+
+      function readAndValidateResult(match, form) {
+        if (match.format === "tb16") {
+          const score1 = toInt(form.get("score1"));
+          const score2 = toInt(form.get("score2"));
+          const valid = validateTiebreak(score1, score2, 16);
+          if (!valid.ok) return valid;
+          return {
+            ok: true,
+            result: {
+              score1,
+              score2,
+              winnerSide: score1 > score2 ? 0 : 1,
+              scoreLabel: `${score1}:${score2}`
+            }
+          };
+        }
+        const games1 = toInt(form.get("games1"));
+        const games2 = toInt(form.get("games2"));
+        if (!Number.isInteger(games1) || !Number.isInteger(games2) || games1 < 0 || games2 < 0) {
+          return { ok: false, message: "Zadaj platné gemy." };
+        }
+        if (games1 === 4 && games2 <= 3) {
+          return { ok: true, result: { games1, games2, winnerSide: 0, scoreLabel: `${games1}:${games2}` } };
+        }
+        if (games2 === 4 && games1 <= 3) {
+          return { ok: true, result: { games1, games2, winnerSide: 1, scoreLabel: `${games1}:${games2}` } };
+        }
+        if (games1 === 4 && games2 === 4) {
+          const tb1 = toInt(form.get("tb1"));
+          const tb2 = toInt(form.get("tb2"));
+          const valid = validateTiebreak(tb1, tb2, 7);
+          if (!valid.ok) return { ok: false, message: `Pri 4:4: ${valid.message}` };
+          return {
+            ok: true,
+            result: {
+              games1,
+              games2,
+              tb1,
+              tb2,
+              winnerSide: tb1 > tb2 ? 0 : 1,
+              scoreLabel: `${games1}:${games2} (${tb1}:${tb2})`
+            }
+          };
+        }
+        return { ok: false, message: "Set musí skončiť 4:0, 4:1, 4:2, 4:3 alebo 4:4 s tiebreakom." };
+      }
+
+      function validateTiebreak(score1, score2, target) {
+        if (!Number.isInteger(score1) || !Number.isInteger(score2) || score1 < 0 || score2 < 0) {
+          return { ok: false, message: "Zadaj platné nezáporné body." };
+        }
+        if (score1 === score2) return { ok: false, message: "Remíza nie je platný výsledok." };
+        const winner = Math.max(score1, score2);
+        const loser = Math.min(score1, score2);
+        if (winner < target) return { ok: false, message: `Víťaz musí mať aspoň ${target} bodov.` };
+        if (loser <= target - 2 && winner !== target) {
+          return { ok: false, message: `Pri skóre pod zhodou musí zápas skončiť presne na ${target}.` };
+        }
+        if (loser >= target - 1 && winner !== loser + 2) {
+          return { ok: false, message: "Po zhode musí byť rozdiel presne 2 body." };
+        }
+        return { ok: true };
+      }
+
+      function prepareForResultChange(match) {
+        if (match.phase === "group" && state.tennisMatches.some((m) => m.phase === "playoff")) {
+          const hasPlayoffResults = state.tennisMatches.some((m) => m.phase === "playoff" && m.result);
+          const text = hasPlayoffResults
+            ? "Zmena skupinového zápasu vymaže celý playoff pavúk aj jeho výsledky. Pokračovať?"
+            : "Zmena skupinového zápasu prelosuje playoff pavúk. Pokračovať?";
+          if (!window.confirm(text)) return false;
+          state.tennisMatches = state.tennisMatches.filter((m) => m.phase === "group");
+          return true;
+        }
+        if (match.phase === "playoff") {
+          const dependents = getDependentPlayoffIds(match.id);
+          const dependentMatches = state.tennisMatches.filter((m) => dependents.has(m.id) && m.result);
+          if (dependentMatches.length) {
+            if (!window.confirm("Zmena tohto zápasu vymaže nadväzujúce playoff výsledky. Pokračovať?")) return false;
+            dependentMatches.forEach((dependent) => {
+              delete dependent.result;
+            });
+          }
+        }
+        return true;
+      }
+
+      function getDependentPlayoffIds(matchId) {
+        const found = new Set();
+        let changed = true;
+        while (changed) {
+          changed = false;
+          state.tennisMatches.filter((m) => m.phase === "playoff").forEach((match) => {
+            const sides = [match.side1, match.side2];
+            const depends = sides.some((side) => side.ref && (side.ref.matchId === matchId || found.has(side.ref.matchId)));
+            if (depends && !found.has(match.id)) {
+              found.add(match.id);
+              changed = true;
+            }
+          });
+        }
+        return found;
+      }
+
+      function closeModal() {
+        modal.classList.remove("open");
+        scoreForm.innerHTML = "";
+      }
+
+      modal.addEventListener("click", (event) => {
+        if (event.target === modal) closeModal();
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && modal.classList.contains("open")) closeModal();
+      });
+
+      function createGroupMatches(groupA, groupB) {
+        return [
+          ...roundRobin(groupA, "A"),
+          ...roundRobin(groupB, "B")
+        ];
+      }
+
+      function roundRobin(ids, group) {
+        const pairs = [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]];
+        return pairs.map(([a, b], index) => ({
+          id: `g-${group}-${index + 1}`,
+          phase: "group",
+          group,
+          label: `Skupina ${group} - zápas ${index + 1}`,
+          format: "tb16",
+          side1: { players: [ids[a]] },
+          side2: { players: [ids[b]] }
+        }));
+      }
+
+      function ensurePlayoff() {
+        if (!state.setupDone || !allGroupMatchesComplete()) return;
+        if (state.tennisMatches.some((m) => m.phase === "playoff")) return;
+        const a = getGroupStandings("A").map((row) => row.id);
+        const b = getGroupStandings("B").map((row) => row.id);
+        state.tennisMatches.push(
+          playoffMatch("qf1", "Top QF1", "set4", [a[0]], [b[1]]),
+          playoffMatch("qf2", "Top QF2", "set4", [b[0]], [a[1]]),
+          playoffMatch("qf3", "Bottom QF3", "set4", [a[2]], [b[3]]),
+          playoffMatch("qf4", "Bottom QF4", "set4", [b[2]], [a[3]]),
+          playoffMatch("final1", "Finále o 1. miesto", "set4", ref("qf1", "winner"), ref("qf2", "winner")),
+          playoffMatch("third", "Zápas o 3. miesto", "set4", ref("qf1", "loser"), ref("qf2", "loser")),
+          playoffMatch("fifth", "Zápas o 5. miesto", "set4", ref("qf3", "winner"), ref("qf4", "winner")),
+          playoffMatch("seventh", "Zápas o 7. miesto", "set4", ref("qf3", "loser"), ref("qf4", "loser"))
+        );
+        saveState();
+      }
+
+      function playoffMatch(id, label, format, side1, side2) {
+        return {
+          id,
+          phase: "playoff",
+          label,
+          format,
+          side1: Array.isArray(side1) ? { players: side1 } : side1,
+          side2: Array.isArray(side2) ? { players: side2 } : side2
+        };
+      }
+
+      function ref(matchId, outcome) {
+        return { ref: { matchId, outcome } };
+      }
+
+      function ensurePadelNextRound() {
+        if (!state.setupDone) return;
+        if (state.padelMatches.length >= state.padelTargetRounds) return;
+        if (state.padelMatches.some((m) => !m.result)) return;
+        state.padelMatches.push(createPadelRound(state.padelMatches.length + 1));
+        saveState();
+      }
+
+      function createPadelRound(round) {
+        const stats = getPadelStatsForSelection();
+        const active = [...stats]
+          .sort((a, b) => a.games - b.games || a.points - b.points || a.lastRound - b.lastRound || a.drawIndex - b.drawIndex)
+          .slice(0, 4)
+          .sort((a, b) => b.points - a.points || a.games - b.games || a.drawIndex - b.drawIndex);
+        const pairings = [
+          [[active[0].id, active[3].id], [active[1].id, active[2].id]],
+          [[active[0].id, active[2].id], [active[1].id, active[3].id]],
+          [[active[0].id, active[1].id], [active[2].id, active[3].id]]
+        ];
+        const history = getPadelPairHistory();
+        const best = pairings
+          .map((pairs, index) => ({ pairs, index, repeats: pairRepeatScore(pairs, history) }))
+          .sort((a, b) => a.repeats - b.repeats || a.index - b.index)[0].pairs;
+        return {
+          id: `padel-${round}`,
+          phase: "padel",
+          label: `Padel - kolo ${round}`,
+          round,
+          format: "tb16",
+          side1: { players: best[0] },
+          side2: { players: best[1] }
+        };
+      }
+
+      function getGroupStandings(group) {
+        const ids = state.groups[group] || [];
+        const rows = ids.map((id) => ({
+          id,
+          wins: 0,
+          losses: 0,
+          played: 0,
+          for: 0,
+          against: 0,
+          diff: 0,
+          drawIndex: getPlayer(id).drawIndex
+        }));
+        const byId = Object.fromEntries(rows.map((row) => [row.id, row]));
+        state.tennisMatches
+          .filter((m) => m.phase === "group" && m.group === group && m.result)
+          .forEach((match) => {
+            const [p1, p2] = resolveMatchPlayers(match).map((team) => team[0]);
+            const a = byId[p1];
+            const b = byId[p2];
+            const r = match.result;
+            a.played += 1;
+            b.played += 1;
+            a.for += r.score1;
+            a.against += r.score2;
+            b.for += r.score2;
+            b.against += r.score1;
+            if (r.winnerSide === 0) {
+              a.wins += 1;
+              b.losses += 1;
+            } else {
+              b.wins += 1;
+              a.losses += 1;
+            }
+          });
+        rows.forEach((row) => {
+          row.diff = row.for - row.against;
+        });
+        return rows.sort((a, b) => {
+          const base = b.wins - a.wins || b.diff - a.diff;
+          if (base !== 0) return base;
+          const h2h = headToHeadWinner(group, a.id, b.id);
+          if (h2h === a.id) return -1;
+          if (h2h === b.id) return 1;
+          return b.for - a.for || a.drawIndex - b.drawIndex;
+        });
+      }
+
+      function headToHeadWinner(group, aId, bId) {
+        const match = state.tennisMatches.find((m) => {
+          if (m.phase !== "group" || m.group !== group || !m.result) return false;
+          const players = resolveMatchPlayers(m).map((team) => team[0]);
+          return players.includes(aId) && players.includes(bId);
+        });
+        if (!match) return null;
+        const players = resolveMatchPlayers(match).map((team) => team[0]);
+        return players[match.result.winnerSide];
+      }
+
+      function getPadelStats() {
+        return getPadelStatsForSelection().sort((a, b) => b.points - a.points || a.games - b.games || a.drawIndex - b.drawIndex);
+      }
+
+      function getPadelStatsForSelection() {
+        const rows = state.players.map((player) => ({
+          id: player.id,
+          points: 0,
+          games: 0,
+          lastRound: -999,
+          drawIndex: player.drawIndex
+        }));
+        const byId = Object.fromEntries(rows.map((row) => [row.id, row]));
+        state.padelMatches.filter((m) => m.result).forEach((match) => {
+          const teams = resolveMatchPlayers(match);
+          teams[0].forEach((id) => {
+            byId[id].points += match.result.score1;
+            byId[id].games += 1;
+            byId[id].lastRound = match.round;
+          });
+          teams[1].forEach((id) => {
+            byId[id].points += match.result.score2;
+            byId[id].games += 1;
+            byId[id].lastRound = match.round;
+          });
+        });
+        return rows;
+      }
+
+      function getPadelPairHistory() {
+        const history = new Map();
+        state.padelMatches.filter((m) => m.result).forEach((match) => {
+          resolveMatchPlayers(match).forEach((team) => {
+            const key = pairKey(team);
+            history.set(key, (history.get(key) || 0) + 1);
+          });
+        });
+        return history;
+      }
+
+      function pairRepeatScore(pairs, history) {
+        return pairs.reduce((sum, pair) => sum + (history.get(pairKey(pair)) || 0), 0);
+      }
+
+      function pairKey(pair) {
+        return [...pair].sort().join("+");
+      }
+
+      function getOverallLeaderboard() {
+        const tennis = getTennisPointsByPlayer();
+        const padel = Object.fromEntries(getPadelStatsForSelection().map((row) => [row.id, row.points]));
+        return state.players.map((player) => ({
+          id: player.id,
+          name: player.name,
+          tennis: tennis[player.id] || 0,
+          padel: padel[player.id] || 0,
+          total: (tennis[player.id] || 0) + (padel[player.id] || 0),
+          drawIndex: player.drawIndex
+        })).sort((a, b) => b.total - a.total || b.padel - a.padel || b.tennis - a.tennis || a.name.localeCompare(b.name, "sk"));
+      }
+
+      function getTennisPointsByPlayer() {
+        const points = {};
+        getTennisPlacements().forEach((row) => {
+          points[row.id] = TENNIS_POINTS[row.place];
+        });
+        return points;
+      }
+
+      function getTennisPlacements() {
+        const final1 = getMatch("final1");
+        const third = getMatch("third");
+        const fifth = getMatch("fifth");
+        const seventh = getMatch("seventh");
+        if (![final1, third, fifth, seventh].every((m) => m && m.result)) return [];
+        return [
+          { place: 1, id: getOutcome(final1, "winner") },
+          { place: 2, id: getOutcome(final1, "loser") },
+          { place: 3, id: getOutcome(third, "winner") },
+          { place: 4, id: getOutcome(third, "loser") },
+          { place: 5, id: getOutcome(fifth, "winner") },
+          { place: 6, id: getOutcome(fifth, "loser") },
+          { place: 7, id: getOutcome(seventh, "winner") },
+          { place: 8, id: getOutcome(seventh, "loser") }
+        ];
+      }
+
+      function allGroupMatchesComplete() {
+        const matches = state.tennisMatches.filter((m) => m.phase === "group");
+        return matches.length === 12 && matches.every((m) => m.result);
+      }
+
+      function allPlayoffComplete() {
+        const matches = state.tennisMatches.filter((m) => m.phase === "playoff");
+        return matches.length === 8 && matches.every((m) => m.result);
+      }
+
+      function canResolveMatch(match) {
+        return resolveMatchPlayers(match).every((team) => team && team.length > 0);
+      }
+
+      function resolveMatchPlayers(match) {
+        return [resolveSide(match.side1), resolveSide(match.side2)];
+      }
+
+      function resolveSide(side) {
+        if (side.players) return side.players;
+        if (!side.ref) return null;
+        const source = getMatch(side.ref.matchId);
+        if (!source || !source.result) return null;
+        return [getOutcome(source, side.ref.outcome)];
+      }
+
+      function getOutcome(match, outcome) {
+        const teams = resolveMatchPlayers(match);
+        const winner = teams[match.result.winnerSide][0];
+        const loser = teams[match.result.winnerSide === 0 ? 1 : 0][0];
+        return outcome === "winner" ? winner : loser;
+      }
+
+      function getMatch(id) {
+        return [...state.tennisMatches, ...state.padelMatches].find((m) => m.id === id);
+      }
+
+      function getPlayer(id) {
+        return state.players.find((p) => p.id === id) || { id, name: "Neznámy hráč", drawIndex: 999 };
+      }
+
+      function teamName(team) {
+        if (!team) return "Čaká sa na súpera";
+        return team.map((id) => getPlayer(id).name).join(" + ");
+      }
+
+      function formatResult(match) {
+        if (!match.result) return null;
+        if (match.format === "set4") {
+          const tb1 = Number.isInteger(match.result.tb1) ? ` (${match.result.tb1})` : "";
+          const tb2 = Number.isInteger(match.result.tb2) ? ` (${match.result.tb2})` : "";
+          return { left: `${match.result.games1}${tb1}`, right: `${match.result.games2}${tb2}` };
+        }
+        return { left: match.result.score1, right: match.result.score2 };
+      }
+
+      function shuffle(items) {
+        const copy = [...items];
+        for (let i = copy.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+      }
+
+      function signed(number) {
+        return number > 0 ? `+${number}` : String(number);
+      }
+
+      function toInt(value) {
+        if (value === null || value === "") return NaN;
+        const number = Number(value);
+        return Number.isInteger(number) ? number : NaN;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>
