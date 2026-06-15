@@ -12,12 +12,20 @@ Appka vzdy uklada data do `localStorage` v danom prehliadaci, takze refresh aleb
 
 Ak doplnis Supabase konfiguraciu v `index.html`, rovnaky stav turnaja sa bude ukladat aj online a bude dostupny kazdemu s GitHub URL.
 
+Kazdy turnaj ma vlastny kod. Appka podporuje priame odkazy:
+
+```text
+https://matuslong.github.io/tenis-padel-turnaj/?turnaj=tenis-padel-2026
+```
+
+Pre novy turnaj zmen kod za `turnaj=` alebo otvor tab `Turnaj` priamo v appke a zadaj novy kod. Kod moze obsahovat male pismena, cisla a pomlcky.
+
 V `index.html` vypln:
 
 ```js
 const SUPABASE_URL = "https://PROJECT.supabase.co";
 const SUPABASE_ANON_KEY = "ANON_PUBLIC_KEY";
-const TOURNAMENT_ID = "tenis-padel-2026";
+const DEFAULT_TOURNAMENT_ID = "tenis-padel-2026";
 ```
 
 ## Supabase setup
@@ -53,7 +61,7 @@ using (true)
 with check (true);
 ```
 
-Toto je zamerne verejne editovatelne nastavenie: kazdy, kto ma URL stranky, moze citat a upravovat vysledky.
+Toto je zamerne verejne editovatelne nastavenie: kazdy, kto ma URL stranky a pozna kod turnaja, moze citat a upravovat vysledky.
 
 ## GitHub
 

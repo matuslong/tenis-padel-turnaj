@@ -504,13 +504,16 @@
 
   <script>
     (() => {
-      const STORAGE_KEY = "tenis-padel-turnaj-v1";
+      const STORAGE_PREFIX = "tenis-padel-turnaj-v1";
+      const LEGACY_STORAGE_KEY = "tenis-padel-turnaj-v1";
+      const SELECTED_TOURNAMENT_KEY = `${STORAGE_PREFIX}:selected`;
       const SUPABASE_URL = "https://xnceffkqjiuqxezqagag.supabase.co";
       const SUPABASE_ANON_KEY = "sb_publishable_CI2xiMwVBj8SCnfZ9u5U-Q_jXvuvyJC";
-      const TOURNAMENT_ID = "tenis-padel-2026";
-      const REMOTE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && TOURNAMENT_ID);
+      const DEFAULT_TOURNAMENT_ID = "tenis-padel-2026";
+      const REMOTE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
       const TENNIS_POINTS = { 1: 12, 2: 10, 3: 8, 4: 7, 5: 5, 6: 4, 7: 2, 8: 1 };
       const TABS = [
+        ["join", "Turnaj"],
         ["setup", "Setup"],
         ["groups", "Skupiny"],
         ["playoff", "Playoff"],
@@ -528,14 +531,41 @@
       const modalSubtitle = document.getElementById("modalSubtitle");
       const scoreForm = document.getElementById("scoreForm");
 
+      let tournamentId = getInitialTournamentId();
       let state = loadState();
-      let activeTab = state.setupDone ? "groups" : "setup";
+      let activeTab = tournamentId ? state.setupDone ? "groups" : "setup" : "join";
       let syncTimer = null;
+
+      function getInitialTournamentId() {
+        const params = new URLSearchParams(window.location.search);
+        const fromUrl = normalizeTournamentId(params.get("turnaj"));
+        if (fromUrl) {
+          localStorage.setItem(SELECTED_TOURNAMENT_KEY, fromUrl);
+          return fromUrl;
+        }
+        return normalizeTournamentId(localStorage.getItem(SELECTED_TOURNAMENT_KEY)) || DEFAULT_TOURNAMENT_ID;
+      }
+
+      function normalizeTournamentId(value) {
+        const cleaned = String(value || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-]/g, "")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "");
+        return cleaned.slice(0, 48);
+      }
+
+      function currentStorageKey() {
+        return `${STORAGE_PREFIX}:${tournamentId || "none"}`;
+      }
 
       function emptyState() {
         const now = new Date().toISOString();
         return {
           version: 1,
+          tournamentId,
           setupDone: false,
           players: [],
           groups: { A: [], B: [] },
@@ -548,8 +578,10 @@
       }
 
       function loadState() {
+        if (!tournamentId) return emptyState();
         try {
-          const raw = localStorage.getItem(STORAGE_KEY);
+          let raw = localStorage.getItem(currentStorageKey());
+          if (!raw && tournamentId === DEFAULT_TOURNAMENT_ID) raw = localStorage.getItem(LEGACY_STORAGE_KEY);
           if (!raw) return emptyState();
           const parsed = JSON.parse(raw);
           return normalizeState(parsed);
@@ -563,6 +595,7 @@
         return {
           ...base,
           ...value,
+          tournamentId,
           groups: { ...base.groups, ...(value.groups || {}) },
           padelTargetRounds: value.padelTargetRounds || 13,
           updatedAt: value.updatedAt || value.createdAt || base.updatedAt
@@ -570,8 +603,11 @@
       }
 
       function saveState(options = {}) {
+        if (!tournamentId) return;
+        state.tournamentId = tournamentId;
         if (options.touch !== false) state.updatedAt = new Date().toISOString();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        localStorage.setItem(currentStorageKey(), JSON.stringify(state));
+        localStorage.setItem(SELECTED_TOURNAMENT_KEY, tournamentId);
         setSyncStatus(REMOTE_ENABLED ? "uložené lokálne" : "uložené lokálne");
         if (options.remote !== false) queueRemoteSave();
       }
@@ -593,13 +629,13 @@
       }
 
       async function pushRemoteState() {
-        if (!REMOTE_ENABLED) return;
+        if (!REMOTE_ENABLED || !tournamentId) return;
         setSyncStatus("ukladám online");
         const response = await fetch(`${supabaseRestUrl()}?on_conflict=id`, {
           method: "POST",
           headers: supabaseHeaders({ prefer: "resolution=merge-duplicates,return=minimal" }),
           body: JSON.stringify({
-            id: TOURNAMENT_ID,
+            id: tournamentId,
             state,
             updated_at: state.updatedAt
           })
@@ -609,13 +645,17 @@
       }
 
       async function loadRemoteState() {
+        if (!tournamentId) {
+          setSyncStatus("vyber turnaj");
+          return;
+        }
         if (!REMOTE_ENABLED) {
           setSyncStatus("offline");
           return;
         }
         setSyncStatus("načítavam online");
         try {
-          const response = await fetch(`${supabaseRestUrl()}?id=eq.${encodeURIComponent(TOURNAMENT_ID)}&select=id,state,updated_at`, {
+          const response = await fetch(`${supabaseRestUrl()}?id=eq.${encodeURIComponent(tournamentId)}&select=id,state,updated_at`, {
             headers: supabaseHeaders()
           });
           if (!response.ok) throw new Error(`Supabase load failed: ${response.status}`);
@@ -681,7 +721,13 @@
         ensurePadelNextRound();
         renderTabs();
         phaseLabel.textContent = getPhaseLabel();
-        if (!state.setupDone && activeTab !== "rules") {
+        if (!tournamentId) {
+          activeTab = "join";
+          renderJoin();
+          return;
+        }
+        if (activeTab === "join") renderJoin();
+        if (!state.setupDone && !["rules", "join"].includes(activeTab)) {
           activeTab = "setup";
           renderSetup();
           return;
@@ -697,7 +743,11 @@
       function renderTabs() {
         tabsEl.innerHTML = "";
         TABS.forEach(([id, label]) => {
-          if (!state.setupDone && !["setup", "rules"].includes(id)) return;
+          if (id === "join") {
+            label = tournamentId ? `Turnaj: ${tournamentId}` : "Turnaj";
+          }
+          if (!tournamentId && id !== "join") return;
+          if (!state.setupDone && !["join", "setup", "rules"].includes(id)) return;
           if (state.setupDone && id === "setup") return;
           const button = document.createElement("button");
           button.className = `phase-tab${activeTab === id ? " active" : ""}`;
@@ -712,11 +762,76 @@
       }
 
       function getPhaseLabel() {
+        if (!tournamentId) return "Vyber turnaja";
         if (!state.setupDone) return "Príprava hráčov";
         if (!allGroupMatchesComplete()) return "Tenis - skupiny";
         if (!allPlayoffComplete()) return "Tenis - playoff";
         if (state.padelMatches.filter((m) => m.result).length < state.padelTargetRounds) return "Padel Americano";
         return "Celkové výsledky";
+      }
+
+      function renderJoin() {
+        const shareUrl = getTournamentUrl(tournamentId || DEFAULT_TOURNAMENT_ID);
+        app.innerHTML = `
+          <section class="panel">
+            <div class="section-title">
+              <h2>Vstup do turnaja</h2>
+              <span class="badge ${REMOTE_ENABLED ? "good" : ""}">${REMOTE_ENABLED ? "online sync" : "offline"}</span>
+            </div>
+            <p class="muted small">Zadaj kód turnaja. Každý kód má vlastné výsledky a vlastný zdieľateľný odkaz.</p>
+            <form id="joinForm">
+              <div class="setup-grid">
+                <input required maxlength="48" name="tournamentId" value="${escapeHtml(tournamentId || DEFAULT_TOURNAMENT_ID)}" placeholder="napr. tenis-padel-2026" autocomplete="off">
+              </div>
+              <div class="actions">
+                <button type="submit">Vstúpiť do turnaja</button>
+                <button class="secondary" type="button" id="copyJoinTournamentLink" ${tournamentId ? "" : "disabled"}>Kopírovať odkaz</button>
+              </div>
+            </form>
+            ${tournamentId ? `
+              <p class="muted small">Aktuálny turnaj: <strong>${escapeHtml(tournamentId)}</strong></p>
+              <p class="muted small">Odkaz: ${escapeHtml(shareUrl)}</p>
+            ` : ""}
+          </section>
+          ${state.setupDone ? renderAdminPanel() : ""}
+        `;
+        document.getElementById("joinForm").addEventListener("submit", (event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const nextId = normalizeTournamentId(form.get("tournamentId"));
+          if (!nextId) {
+            window.alert("Zadaj platný kód turnaja. Použi písmená, čísla alebo pomlčky.");
+            return;
+          }
+          switchTournament(nextId);
+        });
+        const copy = document.getElementById("copyJoinTournamentLink");
+        if (copy) {
+          copy.addEventListener("click", () => copyText(getTournamentUrl(tournamentId), "Odkaz na turnaj je skopírovaný."));
+        }
+        bindAdminButtons();
+      }
+
+      function switchTournament(nextId) {
+        tournamentId = nextId;
+        localStorage.setItem(SELECTED_TOURNAMENT_KEY, tournamentId);
+        updateTournamentUrl();
+        state = loadState();
+        activeTab = state.setupDone ? "groups" : "setup";
+        render();
+        loadRemoteState();
+      }
+
+      function updateTournamentUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.set("turnaj", tournamentId);
+        window.history.replaceState({}, "", url);
+      }
+
+      function getTournamentUrl(id) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("turnaj", id);
+        return url.toString();
       }
 
       function renderSetup() {
@@ -1080,15 +1195,19 @@
       }
 
       function renderAdminPanel() {
+        const shareUrl = tournamentId ? getTournamentUrl(tournamentId) : "";
         return `
           <section class="panel" style="margin-top:14px">
             <div class="section-title">
               <h2>Správa</h2>
               <span class="badge ${REMOTE_ENABLED ? "good" : ""}">${REMOTE_ENABLED ? "online sync" : "offline"}</span>
             </div>
+            <p class="muted small">Aktuálny turnaj: <strong>${escapeHtml(tournamentId || "nevybraný")}</strong></p>
             <p class="muted small">${REMOTE_ENABLED ? "Výsledky sa ukladajú lokálne aj do Supabase. Ak viac ľudí upravuje turnaj, pred zápisom môžeš načítať najnovší stav." : "Výsledky sa ukladajú do tohto prehliadača. Supabase sync sa zapne po doplnení URL a anon kľúča v index.html."}</p>
             <div class="actions">
               <button class="secondary" type="button" id="syncState" ${REMOTE_ENABLED ? "" : "disabled"}>Synchronizovať</button>
+              <button class="secondary" type="button" id="changeTournament">Zmeniť turnaj</button>
+              <button class="secondary" type="button" id="copyTournamentLink" ${shareUrl ? "" : "disabled"}>Kopírovať odkaz</button>
               <button class="secondary" type="button" id="exportState">Export dát</button>
               <button class="danger" type="button" id="resetTournament">Reset turnaja</button>
             </div>
@@ -1123,12 +1242,7 @@
         if (exportButton) {
           exportButton.addEventListener("click", async () => {
             const text = JSON.stringify(state, null, 2);
-            try {
-              await navigator.clipboard.writeText(text);
-              window.alert("Dáta sú skopírované v schránke.");
-            } catch {
-              window.prompt("Skopíruj dáta turnaja:", text);
-            }
+            copyText(text, "Dáta sú skopírované v schránke.");
           });
         }
         const syncButton = document.getElementById("syncState");
@@ -1136,6 +1250,17 @@
           syncButton.addEventListener("click", () => {
             loadRemoteState();
           });
+        }
+        const changeTournament = document.getElementById("changeTournament");
+        if (changeTournament) {
+          changeTournament.addEventListener("click", () => {
+            activeTab = "join";
+            render();
+          });
+        }
+        const copyTournamentLink = document.getElementById("copyTournamentLink");
+        if (copyTournamentLink && tournamentId) {
+          copyTournamentLink.addEventListener("click", () => copyText(getTournamentUrl(tournamentId), "Odkaz na turnaj je skopírovaný."));
         }
       }
 
@@ -1651,6 +1776,15 @@
         if (value === null || value === "") return NaN;
         const number = Number(value);
         return Number.isInteger(number) ? number : NaN;
+      }
+
+      async function copyText(text, successMessage = "Text je skopírovaný.") {
+        try {
+          await navigator.clipboard.writeText(text);
+          window.alert(successMessage);
+        } catch {
+          window.prompt("Skopíruj text:", text);
+        }
       }
 
       function escapeHtml(value) {
