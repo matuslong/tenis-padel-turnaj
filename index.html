@@ -366,6 +366,21 @@
       background: rgba(255, 255, 255, 0.52);
     }
 
+    .rules-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .rules-list {
+      margin: 10px 0 0;
+      padding-left: 20px;
+      color: var(--ink);
+    }
+
+    .rules-list li {
+      margin: 6px 0;
+    }
+
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -490,12 +505,17 @@
   <script>
     (() => {
       const STORAGE_KEY = "tenis-padel-turnaj-v1";
+      const SUPABASE_URL = "";
+      const SUPABASE_ANON_KEY = "";
+      const TOURNAMENT_ID = "tenis-padel-2026";
+      const REMOTE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && TOURNAMENT_ID);
       const TENNIS_POINTS = { 1: 12, 2: 10, 3: 8, 4: 7, 5: 5, 6: 4, 7: 2, 8: 1 };
       const TABS = [
         ["setup", "Setup"],
         ["groups", "Skupiny"],
         ["playoff", "Playoff"],
         ["padel", "Padel"],
+        ["rules", "Pravidlá"],
         ["leaderboard", "Tabuľka"]
       ];
 
@@ -510,8 +530,10 @@
 
       let state = loadState();
       let activeTab = state.setupDone ? "groups" : "setup";
+      let syncTimer = null;
 
       function emptyState() {
+        const now = new Date().toISOString();
         return {
           version: 1,
           setupDone: false,
@@ -520,7 +542,8 @@
           tennisMatches: [],
           padelMatches: [],
           padelTargetRounds: 13,
-          createdAt: new Date().toISOString()
+          createdAt: now,
+          updatedAt: now
         };
       }
 
@@ -529,18 +552,128 @@
           const raw = localStorage.getItem(STORAGE_KEY);
           if (!raw) return emptyState();
           const parsed = JSON.parse(raw);
-          return { ...emptyState(), ...parsed };
+          return normalizeState(parsed);
         } catch {
           return emptyState();
         }
       }
 
-      function saveState() {
+      function normalizeState(value) {
+        const base = emptyState();
+        return {
+          ...base,
+          ...value,
+          groups: { ...base.groups, ...(value.groups || {}) },
+          padelTargetRounds: value.padelTargetRounds || 13,
+          updatedAt: value.updatedAt || value.createdAt || base.updatedAt
+        };
+      }
+
+      function saveState(options = {}) {
+        if (options.touch !== false) state.updatedAt = new Date().toISOString();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        saveStatus.textContent = "uložené";
-        window.setTimeout(() => {
-          saveStatus.textContent = "offline";
-        }, 900);
+        setSyncStatus(REMOTE_ENABLED ? "uložené lokálne" : "uložené lokálne");
+        if (options.remote !== false) queueRemoteSave();
+      }
+
+      function setSyncStatus(text) {
+        saveStatus.textContent = text;
+      }
+
+      function queueRemoteSave() {
+        if (!REMOTE_ENABLED) {
+          window.clearTimeout(syncTimer);
+          syncTimer = window.setTimeout(() => setSyncStatus("offline"), 900);
+          return;
+        }
+        window.clearTimeout(syncTimer);
+        syncTimer = window.setTimeout(() => {
+          pushRemoteState().catch(() => setSyncStatus("chyba syncu"));
+        }, 250);
+      }
+
+      async function pushRemoteState() {
+        if (!REMOTE_ENABLED) return;
+        setSyncStatus("ukladám online");
+        const response = await fetch(`${supabaseRestUrl()}?on_conflict=id`, {
+          method: "POST",
+          headers: supabaseHeaders({ prefer: "resolution=merge-duplicates,return=minimal" }),
+          body: JSON.stringify({
+            id: TOURNAMENT_ID,
+            state,
+            updated_at: state.updatedAt
+          })
+        });
+        if (!response.ok) throw new Error(`Supabase save failed: ${response.status}`);
+        setSyncStatus("uložené online");
+      }
+
+      async function loadRemoteState() {
+        if (!REMOTE_ENABLED) {
+          setSyncStatus("offline");
+          return;
+        }
+        setSyncStatus("načítavam online");
+        try {
+          const response = await fetch(`${supabaseRestUrl()}?id=eq.${encodeURIComponent(TOURNAMENT_ID)}&select=id,state,updated_at`, {
+            headers: supabaseHeaders()
+          });
+          if (!response.ok) throw new Error(`Supabase load failed: ${response.status}`);
+          const rows = await response.json();
+          const remote = rows[0]?.state ? normalizeState(rows[0].state) : null;
+          if (!remote) {
+            if (state.setupDone) await pushRemoteState();
+            else setSyncStatus("online pripravené");
+            return;
+          }
+          if (remote.setupDone && !state.setupDone) {
+            state = remote;
+            saveState({ touch: false, remote: false });
+            activeTab = "groups";
+            setSyncStatus("načítané online");
+            render();
+            return;
+          }
+          const remoteTime = Date.parse(remote.updatedAt || rows[0].updated_at || 0);
+          const localTime = Date.parse(state.updatedAt || 0);
+          if (remoteTime > localTime) {
+            state = remote;
+            saveState({ touch: false, remote: false });
+            activeTab = state.setupDone && activeTab === "setup" ? "groups" : activeTab;
+            setSyncStatus("načítané online");
+            render();
+            return;
+          }
+          if (localTime > remoteTime && state.setupDone) {
+            const keepLocal = window.confirm("V tomto prehliadači sú novšie dáta než online verzia. Odoslať lokálne dáta online?");
+            if (keepLocal) await pushRemoteState();
+            else {
+              state = remote;
+              saveState({ touch: false, remote: false });
+              setSyncStatus("načítané online");
+              render();
+            }
+            return;
+          }
+          setSyncStatus("online aktuálne");
+        } catch (error) {
+          console.error(error);
+          setSyncStatus("chyba syncu");
+        }
+      }
+
+      function supabaseRestUrl() {
+        return `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/tournaments`;
+      }
+
+      function supabaseHeaders(options = {}) {
+        const headers = {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json"
+        };
+        if (options.prefer) headers.Prefer = options.prefer;
+        return headers;
       }
 
       function render() {
@@ -548,7 +681,7 @@
         ensurePadelNextRound();
         renderTabs();
         phaseLabel.textContent = getPhaseLabel();
-        if (!state.setupDone) {
+        if (!state.setupDone && activeTab !== "rules") {
           activeTab = "setup";
           renderSetup();
           return;
@@ -557,13 +690,14 @@
         if (activeTab === "groups") renderGroups();
         if (activeTab === "playoff") renderPlayoff();
         if (activeTab === "padel") renderPadel();
+        if (activeTab === "rules") renderRules();
         if (activeTab === "leaderboard") renderLeaderboardPage();
       }
 
       function renderTabs() {
         tabsEl.innerHTML = "";
         TABS.forEach(([id, label]) => {
-          if (!state.setupDone && id !== "setup") return;
+          if (!state.setupDone && !["setup", "rules"].includes(id)) return;
           if (state.setupDone && id === "setup") return;
           const button = document.createElement("button");
           button.className = `phase-tab${activeTab === id ? " active" : ""}`;
@@ -737,6 +871,83 @@
         bindAdminButtons();
       }
 
+      function renderRules() {
+        app.innerHTML = `
+          <section class="rules-grid">
+            <section class="panel">
+              <div class="section-title">
+                <h2>Tenis - skupiny</h2>
+                <span class="badge">2 kurty</span>
+              </div>
+              <ul class="rules-list">
+                <li>8 hráčov je náhodne rozdelených do skupiny A a skupiny B po 4 hráčoch.</li>
+                <li>V každej skupine hrá každý s každým, teda 6 zápasov na skupinu a 3 zápasy na hráča.</li>
+                <li>Formát zápasu je tiebreak do 16 bodov. Pri 15:15 sa hrá, kým niekto nevedie o 2 body.</li>
+                <li>Poradie v skupine: výhry, rozdiel bodov, vzájomný zápas, získané body, pôvodné losovanie.</li>
+              </ul>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h2>Tenis - playoff</h2>
+                <span class="badge">všetci hráči</span>
+              </div>
+              <ul class="rules-list">
+                <li>Top bracket: A1 vs B2 a B1 vs A2, následne finále o 1. miesto a zápas o 3. miesto.</li>
+                <li>Bottom bracket: A3 vs B4 a B3 vs A4, následne zápas o 5. miesto a zápas o 7. miesto.</li>
+                <li>Formát zápasu je set do 4 gemov. Platné skóre je 4:0, 4:1, 4:2, 4:3 alebo 4:4.</li>
+                <li>Pri 4:4 rozhoduje tiebreak do 7 bodov. Pri 6:6 sa hrá, kým niekto nevedie o 2 body.</li>
+              </ul>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h2>Tenisové bodovanie</h2>
+                <span class="badge good">po playoff</span>
+              </div>
+              <table class="score-table">
+                <thead>
+                  <tr><th>Miesto</th><th>Body</th><th>Miesto</th><th>Body</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>1.</td><td>12</td><td>5.</td><td>5</td></tr>
+                  <tr><td>2.</td><td>10</td><td>6.</td><td>4</td></tr>
+                  <tr><td>3.</td><td>8</td><td>7.</td><td>2</td></tr>
+                  <tr><td>4.</td><td>7</td><td>8.</td><td>1</td></tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h2>Padel Americano</h2>
+                <span class="badge">13 kôl</span>
+              </div>
+              <ul class="rules-list">
+                <li>Hrá sa na 1 kurte, v každom kole hrajú 4 hráči a 4 čakajú.</li>
+                <li>Formát zápasu je tiebreak do 16 bodov. Pri 15:15 sa hrá na rozdiel 2 bodov.</li>
+                <li>Appka vyberá hráčov s menším počtom padel zápasov a tvorí dvojice podľa aktuálneho poradia.</li>
+                <li>Padel body hráča sú surové body získané jeho dvojicou vo všetkých padel zápasoch.</li>
+              </ul>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h2>Celkové poradie</h2>
+                <span class="badge good">live</span>
+              </div>
+              <ul class="rules-list">
+                <li>Celkový výsledok = tenisové body za umiestnenie + padel body.</li>
+                <li>Tabuľka sa prepočíta okamžite po každom uloženom výsledku.</li>
+                <li>${REMOTE_ENABLED ? "Každý s odkazom na stránku môže výsledky zadať alebo upraviť." : "Teraz je zapnuté lokálne ukladanie. Po doplnení Supabase údajov budú výsledky zdieľané cez URL."}</li>
+              </ul>
+            </section>
+          </section>
+          ${renderAdminPanel()}
+        `;
+        bindAdminButtons();
+      }
+
       function renderLeaderMini() {
         const leaders = getOverallLeaderboard().slice(0, 3);
         return `
@@ -873,8 +1084,11 @@
           <section class="panel" style="margin-top:14px">
             <div class="section-title">
               <h2>Správa</h2>
+              <span class="badge ${REMOTE_ENABLED ? "good" : ""}">${REMOTE_ENABLED ? "online sync" : "offline"}</span>
             </div>
+            <p class="muted small">${REMOTE_ENABLED ? "Výsledky sa ukladajú lokálne aj do Supabase. Ak viac ľudí upravuje turnaj, pred zápisom môžeš načítať najnovší stav." : "Výsledky sa ukladajú do tohto prehliadača. Supabase sync sa zapne po doplnení URL a anon kľúča v index.html."}</p>
             <div class="actions">
+              <button class="secondary" type="button" id="syncState" ${REMOTE_ENABLED ? "" : "disabled"}>Synchronizovať</button>
               <button class="secondary" type="button" id="exportState">Export dát</button>
               <button class="danger" type="button" id="resetTournament">Reset turnaja</button>
             </div>
@@ -895,9 +1109,12 @@
         const reset = document.getElementById("resetTournament");
         if (reset) {
           reset.addEventListener("click", () => {
-            if (!window.confirm("Naozaj vymazať celý turnaj z tohto prehliadača?")) return;
+            const text = REMOTE_ENABLED
+              ? "Naozaj vymazať celý turnaj lokálne aj online pre všetkých s odkazom?"
+              : "Naozaj vymazať celý turnaj z tohto prehliadača?";
+            if (!window.confirm(text)) return;
             state = emptyState();
-            localStorage.removeItem(STORAGE_KEY);
+            saveState();
             activeTab = "setup";
             render();
           });
@@ -912,6 +1129,12 @@
             } catch {
               window.prompt("Skopíruj dáta turnaja:", text);
             }
+          });
+        }
+        const syncButton = document.getElementById("syncState");
+        if (syncButton) {
+          syncButton.addEventListener("click", () => {
+            loadRemoteState();
           });
         }
       }
@@ -1440,6 +1663,7 @@
       }
 
       render();
+      loadRemoteState();
     })();
   </script>
 </body>
