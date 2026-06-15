@@ -417,6 +417,25 @@
       margin-top: 12px;
     }
 
+    .mode-row {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .mode-block {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-2);
+    }
+
+    .mode-block.active {
+      display: block;
+    }
+
     .score-entry label {
       min-width: 0;
       font-weight: 800;
@@ -572,6 +591,8 @@
           tennisMatches: [],
           padelMatches: [],
           padelTargetRounds: 13,
+          auditLog: [],
+          undoStack: [],
           createdAt: now,
           updatedAt: now
         };
@@ -597,9 +618,60 @@
           ...value,
           tournamentId,
           groups: { ...base.groups, ...(value.groups || {}) },
+          auditLog: Array.isArray(value.auditLog) ? value.auditLog : [],
+          undoStack: Array.isArray(value.undoStack) ? value.undoStack : [],
           padelTargetRounds: value.padelTargetRounds || 13,
           updatedAt: value.updatedAt || value.createdAt || base.updatedAt
         };
+      }
+
+      function snapshotCoreState(source = state) {
+        const copy = JSON.parse(JSON.stringify(source));
+        delete copy.auditLog;
+        delete copy.undoStack;
+        return copy;
+      }
+
+      function recordAudit(before, action, details = {}) {
+        const entry = {
+          id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          at: new Date().toISOString(),
+          action,
+          ...details
+        };
+        state.undoStack = [
+          ...(state.undoStack || []),
+          { id: entry.id, at: entry.at, action, before }
+        ].slice(-20);
+        state.auditLog = [
+          ...(state.auditLog || []),
+          entry
+        ].slice(-100);
+      }
+
+      function restoreFromUndo() {
+        const stack = state.undoStack || [];
+        const last = stack[stack.length - 1];
+        if (!last) {
+          window.alert("Nie je čo vrátiť späť.");
+          return;
+        }
+        if (!window.confirm(`Vrátiť späť poslednú zmenu: ${last.action}?`)) return;
+        const currentAudit = state.auditLog || [];
+        const remainingUndo = stack.slice(0, -1);
+        state = normalizeState(last.before);
+        state.auditLog = [
+          ...currentAudit,
+          {
+            id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            at: new Date().toISOString(),
+            action: "Späť poslednú zmenu",
+            revertedAction: last.action
+          }
+        ].slice(-100);
+        state.undoStack = remainingUndo;
+        saveState();
+        render();
       }
 
       function saveState(options = {}) {
@@ -865,6 +937,7 @@
       }
 
       function startTournament(names) {
+        const before = snapshotCoreState();
         const players = shuffle(names).map((name, index) => ({
           id: `p${index + 1}`,
           name,
@@ -879,6 +952,10 @@
           groups: { A: groupA, B: groupB },
           tennisMatches: createGroupMatches(groupA, groupB)
         };
+        recordAudit(before, "Štart turnaja", {
+          oldValue: { setupDone: false },
+          newValue: { setupDone: true, players: players.map((p) => p.name) }
+        });
         activeTab = "groups";
         saveState();
         render();
@@ -1057,6 +1134,20 @@
                 <li>${REMOTE_ENABLED ? "Každý s odkazom na stránku môže výsledky zadať alebo upraviť." : "Teraz je zapnuté lokálne ukladanie. Po doplnení Supabase údajov budú výsledky zdieľané cez URL."}</li>
               </ul>
             </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h2>Núdzové pravidlá</h2>
+                <span class="badge warn">admin</span>
+              </div>
+              <ul class="rules-list">
+                <li>Chybný výsledok opravíš tapnutím na dokončený zápas a prepísaním výsledku.</li>
+                <li>Kontumácia je povolená vo všetkých zápasoch. Uloží sa ako 16:0 pri tiebreaku alebo 4:0 pri playoff sete.</li>
+                <li>Remíza / nedohrané je povolená iba v skupinách a padeli. Uloží sa ako 8:8 bez výhry a prehry.</li>
+                <li>Playoff musí mať víťaza. Pri zmene skoršieho playoff zápasu sa zmažú iba nadväzujúce výsledky.</li>
+                <li>V časti Správa je dostupné späť poslednú zmenu, export, stiahnutie zálohy a import zálohy.</li>
+              </ul>
+            </section>
           </section>
           ${renderAdminPanel()}
         `;
@@ -1177,7 +1268,7 @@
             <div class="match-body">
               <div class="match-meta">
                 <span>${escapeHtml(meta)}</span>
-                <span class="badge ${match.result ? "good" : isReady ? "warn" : ""}">${match.result ? "hotovo" : isReady ? "zadať" : "čaká"}</span>
+                <span class="badge ${match.result ? "good" : isReady ? "warn" : ""}">${resultBadge(match)}</span>
               </div>
               <div class="teams">
                 <div class="team-row">
@@ -1196,6 +1287,8 @@
 
       function renderAdminPanel() {
         const shareUrl = tournamentId ? getTournamentUrl(tournamentId) : "";
+        const auditCount = (state.auditLog || []).length;
+        const canUndo = (state.undoStack || []).length > 0;
         return `
           <section class="panel" style="margin-top:14px">
             <div class="section-title">
@@ -1206,11 +1299,15 @@
             <p class="muted small">${REMOTE_ENABLED ? "Výsledky sa ukladajú lokálne aj do Supabase. Ak viac ľudí upravuje turnaj, pred zápisom môžeš načítať najnovší stav." : "Výsledky sa ukladajú do tohto prehliadača. Supabase sync sa zapne po doplnení URL a anon kľúča v index.html."}</p>
             <div class="actions">
               <button class="secondary" type="button" id="syncState" ${REMOTE_ENABLED ? "" : "disabled"}>Synchronizovať</button>
+              <button class="secondary" type="button" id="undoLastChange" ${canUndo ? "" : "disabled"}>Späť poslednú zmenu</button>
               <button class="secondary" type="button" id="changeTournament">Zmeniť turnaj</button>
               <button class="secondary" type="button" id="copyTournamentLink" ${shareUrl ? "" : "disabled"}>Kopírovať odkaz</button>
               <button class="secondary" type="button" id="exportState">Export dát</button>
+              <button class="secondary" type="button" id="downloadBackup">Stiahnuť zálohu</button>
+              <button class="secondary" type="button" id="importBackup">Importovať zálohu</button>
               <button class="danger" type="button" id="resetTournament">Reset turnaja</button>
             </div>
+            <p class="muted small">Audit log: ${auditCount} záznamov. Undo: ${(state.undoStack || []).length} krokov.</p>
           </section>
         `;
       }
@@ -1227,12 +1324,18 @@
       function bindAdminButtons() {
         const reset = document.getElementById("resetTournament");
         if (reset) {
-          reset.addEventListener("click", () => {
+          reset.addEventListener("click", async () => {
             const text = REMOTE_ENABLED
               ? "Naozaj vymazať celý turnaj lokálne aj online pre všetkých s odkazom?"
               : "Naozaj vymazať celý turnaj z tohto prehliadača?";
             if (!window.confirm(text)) return;
+            if (!(await confirmRemoteFreshness())) return;
+            const before = snapshotCoreState();
             state = emptyState();
+            recordAudit(before, "Reset turnaja", {
+              oldValue: { setupDone: before.setupDone, updatedAt: before.updatedAt },
+              newValue: { setupDone: false }
+            });
             saveState();
             activeTab = "setup";
             render();
@@ -1262,6 +1365,21 @@
         if (copyTournamentLink && tournamentId) {
           copyTournamentLink.addEventListener("click", () => copyText(getTournamentUrl(tournamentId), "Odkaz na turnaj je skopírovaný."));
         }
+        const undo = document.getElementById("undoLastChange");
+        if (undo) {
+          undo.addEventListener("click", async () => {
+            if (!(await confirmRemoteFreshness())) return;
+            restoreFromUndo();
+          });
+        }
+        const download = document.getElementById("downloadBackup");
+        if (download) {
+          download.addEventListener("click", downloadBackup);
+        }
+        const importButton = document.getElementById("importBackup");
+        if (importButton) {
+          importButton.addEventListener("click", importBackup);
+        }
       }
 
       function openScoreModal(match) {
@@ -1270,9 +1388,10 @@
         modalTitle.textContent = match.phase === "padel" ? `Padel - kolo ${match.round}` : match.label;
         modalSubtitle.textContent = `${teamName(resolved[0])} vs ${teamName(resolved[1])}`;
         scoreForm.innerHTML = buildScoreForm(match, resolved, existing);
+        bindResultModeControls();
         modal.classList.add("open");
-        scoreForm.querySelector("input")?.focus();
-        scoreForm.onsubmit = (event) => {
+        scoreForm.querySelector("[name='resultMode']")?.focus();
+        scoreForm.onsubmit = async (event) => {
           event.preventDefault();
           const result = readAndValidateResult(match, new FormData(scoreForm));
           const error = scoreForm.querySelector(".error");
@@ -1283,11 +1402,20 @@
           }
           const message = `Uložiť výsledok ${teamName(resolved[0])} ${result.result.scoreLabel} ${teamName(resolved[1])}?`;
           if (!window.confirm(message)) return;
+          if (!(await confirmRemoteFreshness())) return;
+          const before = snapshotCoreState();
+          const previousResult = match.result ? JSON.parse(JSON.stringify(match.result)) : null;
           if (!prepareForResultChange(match)) return;
           match.result = {
             ...result.result,
             savedAt: new Date().toISOString()
           };
+          recordAudit(before, previousResult ? "Oprava výsledku" : "Uloženie výsledku", {
+            matchId: match.id,
+            matchLabel: match.label,
+            oldValue: previousResult,
+            newValue: match.result
+          });
           saveState();
           closeModal();
           render();
@@ -1296,10 +1424,19 @@
         cancel.addEventListener("click", closeModal);
         const clear = scoreForm.querySelector("[data-clear]");
         if (clear) {
-          clear.addEventListener("click", () => {
+          clear.addEventListener("click", async () => {
             if (!window.confirm("Vymazať uložený výsledok tohto zápasu?")) return;
+            if (!(await confirmRemoteFreshness())) return;
+            const before = snapshotCoreState();
+            const previousResult = match.result ? JSON.parse(JSON.stringify(match.result)) : null;
             if (!prepareForResultChange(match)) return;
             delete match.result;
+            recordAudit(before, "Vymazanie výsledku", {
+              matchId: match.id,
+              matchLabel: match.label,
+              oldValue: previousResult,
+              newValue: null
+            });
             saveState();
             closeModal();
             render();
@@ -1308,40 +1445,90 @@
       }
 
       function buildScoreForm(match, resolved, existing) {
+        const mode = existing.mode || "normal";
+        const drawAllowed = canDraw(match);
+        const modeControls = `
+          <div class="mode-row">
+            <label for="resultMode"><strong>Typ výsledku</strong></label>
+            <select id="resultMode" name="resultMode">
+              <option value="normal" ${mode === "normal" ? "selected" : ""}>Normálny výsledok</option>
+              <option value="forfeit" ${mode === "forfeit" ? "selected" : ""}>Kontumácia</option>
+              ${drawAllowed ? `<option value="draw" ${mode === "draw" ? "selected" : ""}>Remíza / nedohrané</option>` : ""}
+            </select>
+          </div>
+        `;
+        const forfeitBlock = `
+          <div class="mode-block" data-mode-block="forfeit">
+            <p class="muted small">Kontumácia uloží default skóre podľa formátu zápasu.</p>
+            <div class="score-entry">
+              <label>Víťaz kontumáciou</label>
+              <select name="forfeitWinner">
+                <option value="0" ${existing.winnerSide === 0 ? "selected" : ""}>${escapeHtml(teamName(resolved[0]))}</option>
+                <option value="1" ${existing.winnerSide === 1 ? "selected" : ""}>${escapeHtml(teamName(resolved[1]))}</option>
+              </select>
+            </div>
+          </div>
+        `;
+        const drawBlock = drawAllowed ? `
+          <div class="mode-block" data-mode-block="draw">
+            <p class="muted small">Remíza / nedohrané sa uloží ako 8:8. Nepočíta sa žiadna výhra ani prehra.</p>
+          </div>
+        ` : "";
         if (match.format === "set4") {
           return `
-            <div class="score-entry">
-              <label>${escapeHtml(teamName(resolved[0]))} - gemy</label>
-              <input inputmode="numeric" pattern="[0-9]*" name="games1" value="${existing.games1 ?? ""}" required>
+            ${modeControls}
+            <div class="mode-block" data-mode-block="normal">
+              <div class="score-entry">
+                <label>${escapeHtml(teamName(resolved[0]))} - gemy</label>
+                <input inputmode="numeric" pattern="[0-9]*" name="games1" value="${existing.games1 ?? ""}">
+              </div>
+              <div class="score-entry">
+                <label>${escapeHtml(teamName(resolved[1]))} - gemy</label>
+                <input inputmode="numeric" pattern="[0-9]*" name="games2" value="${existing.games2 ?? ""}">
+              </div>
+              <div class="score-entry">
+                <label>Tiebreak hráč 1</label>
+                <input inputmode="numeric" pattern="[0-9]*" name="tb1" value="${existing.tb1 ?? ""}" placeholder="iba pri 4:4">
+              </div>
+              <div class="score-entry">
+                <label>Tiebreak hráč 2</label>
+                <input inputmode="numeric" pattern="[0-9]*" name="tb2" value="${existing.tb2 ?? ""}" placeholder="iba pri 4:4">
+              </div>
             </div>
-            <div class="score-entry">
-              <label>${escapeHtml(teamName(resolved[1]))} - gemy</label>
-              <input inputmode="numeric" pattern="[0-9]*" name="games2" value="${existing.games2 ?? ""}" required>
-            </div>
-            <div class="score-entry">
-              <label>Tiebreak hráč 1</label>
-              <input inputmode="numeric" pattern="[0-9]*" name="tb1" value="${existing.tb1 ?? ""}" placeholder="iba pri 4:4">
-            </div>
-            <div class="score-entry">
-              <label>Tiebreak hráč 2</label>
-              <input inputmode="numeric" pattern="[0-9]*" name="tb2" value="${existing.tb2 ?? ""}" placeholder="iba pri 4:4">
-            </div>
+            ${forfeitBlock}
             <p class="error"></p>
             ${modalActions(Boolean(match.result))}
           `;
         }
         return `
-          <div class="score-entry">
-            <label>${escapeHtml(teamName(resolved[0]))}</label>
-            <input inputmode="numeric" pattern="[0-9]*" name="score1" value="${existing.score1 ?? ""}" required>
+          ${modeControls}
+          <div class="mode-block" data-mode-block="normal">
+            <div class="score-entry">
+              <label>${escapeHtml(teamName(resolved[0]))}</label>
+              <input inputmode="numeric" pattern="[0-9]*" name="score1" value="${existing.score1 ?? ""}">
+            </div>
+            <div class="score-entry">
+              <label>${escapeHtml(teamName(resolved[1]))}</label>
+              <input inputmode="numeric" pattern="[0-9]*" name="score2" value="${existing.score2 ?? ""}">
+            </div>
           </div>
-          <div class="score-entry">
-            <label>${escapeHtml(teamName(resolved[1]))}</label>
-            <input inputmode="numeric" pattern="[0-9]*" name="score2" value="${existing.score2 ?? ""}" required>
-          </div>
+          ${forfeitBlock}
+          ${drawBlock}
           <p class="error"></p>
           ${modalActions(Boolean(match.result))}
         `;
+      }
+
+      function bindResultModeControls() {
+        const select = scoreForm.querySelector("[name='resultMode']");
+        if (!select) return;
+        const update = () => {
+          scoreForm.querySelectorAll("[data-mode-block]").forEach((block) => {
+            block.classList.toggle("active", block.dataset.modeBlock === select.value);
+          });
+        };
+        select.addEventListener("change", update);
+        update();
       }
 
       function modalActions(hasResult) {
@@ -1355,6 +1542,50 @@
       }
 
       function readAndValidateResult(match, form) {
+        const mode = form.get("resultMode") || "normal";
+        if (mode === "forfeit") {
+          const winnerSide = toInt(form.get("forfeitWinner"));
+          if (![0, 1].includes(winnerSide)) return { ok: false, message: "Vyber víťaza kontumáciou." };
+          if (match.format === "set4") {
+            const games1 = winnerSide === 0 ? 4 : 0;
+            const games2 = winnerSide === 1 ? 4 : 0;
+            return {
+              ok: true,
+              result: {
+                mode,
+                games1,
+                games2,
+                winnerSide,
+                scoreLabel: `${games1}:${games2} kont.`
+              }
+            };
+          }
+          const score1 = winnerSide === 0 ? 16 : 0;
+          const score2 = winnerSide === 1 ? 16 : 0;
+          return {
+            ok: true,
+            result: {
+              mode,
+              score1,
+              score2,
+              winnerSide,
+              scoreLabel: `${score1}:${score2} kont.`
+            }
+          };
+        }
+        if (mode === "draw") {
+          if (!canDraw(match)) return { ok: false, message: "Remíza je povolená iba v skupinách a padeli." };
+          return {
+            ok: true,
+            result: {
+              mode,
+              isDraw: true,
+              score1: 8,
+              score2: 8,
+              scoreLabel: "8:8 remíza"
+            }
+          };
+        }
         if (match.format === "tb16") {
           const score1 = toInt(form.get("score1"));
           const score2 = toInt(form.get("score2"));
@@ -1363,6 +1594,7 @@
           return {
             ok: true,
             result: {
+              mode: "normal",
               score1,
               score2,
               winnerSide: score1 > score2 ? 0 : 1,
@@ -1376,10 +1608,10 @@
           return { ok: false, message: "Zadaj platné gemy." };
         }
         if (games1 === 4 && games2 <= 3) {
-          return { ok: true, result: { games1, games2, winnerSide: 0, scoreLabel: `${games1}:${games2}` } };
+          return { ok: true, result: { mode: "normal", games1, games2, winnerSide: 0, scoreLabel: `${games1}:${games2}` } };
         }
         if (games2 === 4 && games1 <= 3) {
-          return { ok: true, result: { games1, games2, winnerSide: 1, scoreLabel: `${games1}:${games2}` } };
+          return { ok: true, result: { mode: "normal", games1, games2, winnerSide: 1, scoreLabel: `${games1}:${games2}` } };
         }
         if (games1 === 4 && games2 === 4) {
           const tb1 = toInt(form.get("tb1"));
@@ -1389,6 +1621,7 @@
           return {
             ok: true,
             result: {
+              mode: "normal",
               games1,
               games2,
               tb1,
@@ -1399,6 +1632,10 @@
           };
         }
         return { ok: false, message: "Set musí skončiť 4:0, 4:1, 4:2, 4:3 alebo 4:4 s tiebreakom." };
+      }
+
+      function canDraw(match) {
+        return match.phase === "group" || match.phase === "padel";
       }
 
       function validateTiebreak(score1, score2, target) {
@@ -1584,6 +1821,9 @@
             a.against += r.score2;
             b.for += r.score2;
             b.against += r.score1;
+            if (r.isDraw || !Number.isInteger(r.winnerSide)) {
+              return;
+            }
             if (r.winnerSide === 0) {
               a.wins += 1;
               b.losses += 1;
@@ -1612,6 +1852,7 @@
           return players.includes(aId) && players.includes(bId);
         });
         if (!match) return null;
+        if (match.result.isDraw || !Number.isInteger(match.result.winnerSide)) return null;
         const players = resolveMatchPlayers(match).map((team) => team[0]);
         return players[match.result.winnerSide];
       }
@@ -1759,6 +2000,13 @@
         return { left: match.result.score1, right: match.result.score2 };
       }
 
+      function resultBadge(match) {
+        if (!match.result) return canResolveMatch(match) ? "zadať" : "čaká";
+        if (match.result.mode === "forfeit") return "kontumácia";
+        if (match.result.mode === "draw" || match.result.isDraw) return "remíza";
+        return "hotovo";
+      }
+
       function shuffle(items) {
         const copy = [...items];
         for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -1776,6 +2024,84 @@
         if (value === null || value === "") return NaN;
         const number = Number(value);
         return Number.isInteger(number) ? number : NaN;
+      }
+
+      async function confirmRemoteFreshness() {
+        if (!REMOTE_ENABLED || !tournamentId) return true;
+        try {
+          const response = await fetch(`${supabaseRestUrl()}?id=eq.${encodeURIComponent(tournamentId)}&select=id,updated_at`, {
+            headers: supabaseHeaders()
+          });
+          if (!response.ok) throw new Error(`Supabase conflict check failed: ${response.status}`);
+          const rows = await response.json();
+          const remoteUpdatedAt = rows[0]?.updated_at;
+          if (!remoteUpdatedAt) return true;
+          const remoteTime = Date.parse(remoteUpdatedAt);
+          const localTime = Date.parse(state.updatedAt || 0);
+          if (remoteTime <= localTime) return true;
+          const overwrite = window.confirm("Online verzia turnaja je novšia než táto obrazovka. OK = prepísať online touto zmenou, Zrušiť = načítať online stav a nepokračovať.");
+          if (overwrite) return true;
+          await loadRemoteState();
+          return false;
+        } catch (error) {
+          console.error(error);
+          return window.confirm("Nepodarilo sa overiť online stav. Pokračovať iba s lokálnou zmenou?");
+        }
+      }
+
+      function downloadBackup() {
+        const payload = JSON.stringify(state, null, 2);
+        const blob = new Blob([payload], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${tournamentId || "turnaj"}-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(link.href);
+      }
+
+      function importBackup() {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/json,.json";
+        input.style.display = "none";
+        input.addEventListener("change", async () => {
+          const file = input.files?.[0];
+          if (!file) {
+            input.remove();
+            return;
+          }
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const imported = normalizeState(parsed.state || parsed);
+            const importedId = imported.tournamentId || "neznámy";
+            const updated = imported.updatedAt || "neznámy";
+            const confirmText = `Importovať zálohu do aktuálneho turnaja "${tournamentId}"?\n\nZáloha: ${importedId}\nPosledná zmena: ${updated}\n\nAktuálne dáta budú prepísané.`;
+            if (!window.confirm(confirmText)) return;
+            if (!(await confirmRemoteFreshness())) return;
+            const before = snapshotCoreState();
+            state = normalizeState({
+              ...imported,
+              tournamentId
+            });
+            recordAudit(before, "Import zálohy", {
+              oldValue: { updatedAt: before.updatedAt },
+              newValue: { importedTournamentId: importedId, updatedAt: imported.updatedAt }
+            });
+            saveState();
+            activeTab = state.setupDone ? "groups" : "setup";
+            render();
+          } catch (error) {
+            console.error(error);
+            window.alert("Zálohu sa nepodarilo importovať. Skontroluj, že ide o JSON export z tejto appky.");
+          } finally {
+            input.remove();
+          }
+        });
+        document.body.appendChild(input);
+        input.click();
       }
 
       async function copyText(text, successMessage = "Text je skopírovaný.") {

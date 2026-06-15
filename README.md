@@ -63,6 +63,16 @@ with check (true);
 
 Toto je zamerne verejne editovatelne nastavenie: kazdy, kto ma URL stranky a pozna kod turnaja, moze citat a upravovat vysledky.
 
+## Nudzove pravidla
+
+- Chybny vysledok oprav tapnutim na dokonceny zapas.
+- Kontumacia je povolena vo vsetkych zapasoch.
+- Kontumacia sa ulozi ako `16:0` pri tiebreaku alebo `4:0` pri playoff sete.
+- Remiza / nedohrane je povolena iba v tenisovych skupinach a v padeli.
+- Remiza / nedohrane sa ulozi ako `8:8` a neprida vyhru ani prehru.
+- Playoff musi mat vitaza.
+- V appke je dostupne `Spat poslednu zmenu`, export, stiahnutie zalohy a import zalohy.
+
 ## GitHub
 
 Projekt je pripraveny ako lokalny git projekt. Private GitHub remote sa da doplnit:
