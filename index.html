@@ -65,6 +65,10 @@
       background: var(--danger);
     }
 
+    button.warning {
+      background: var(--warn);
+    }
+
     button:disabled {
       cursor: not-allowed;
       opacity: 0.55;
@@ -348,6 +352,16 @@
       color: var(--warn);
     }
 
+    .badge.danger {
+      background: #fde8e5;
+      color: var(--danger);
+    }
+
+    .match-card.deferred {
+      border-color: #e5ad72;
+      background: #fffaf3;
+    }
+
     .two-col {
       display: grid;
       gap: 14px;
@@ -463,6 +477,62 @@
       grid-template-columns: 1fr 1fr 1fr;
     }
 
+    .footer-actions.many {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .draw-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      place-items: center;
+      padding: 18px;
+      background: rgba(23, 33, 28, 0.62);
+    }
+
+    .draw-overlay.open {
+      display: grid;
+    }
+
+    .draw-panel {
+      width: min(520px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .draw-panel h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+    }
+
+    .draw-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .draw-item {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: var(--surface-2);
+      font-weight: 800;
+    }
+
+    .draw-item span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+    }
+
     @media (min-width: 720px) {
       .topbar-inner {
         grid-template-columns: minmax(240px, 1fr) minmax(360px, 2fr);
@@ -491,6 +561,10 @@
       .modal {
         max-width: 560px;
         border-radius: 12px;
+      }
+
+      .footer-actions.many {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
       }
     }
   </style>
@@ -521,16 +595,24 @@
     </div>
   </div>
 
+  <div class="draw-overlay" id="drawOverlay" aria-live="polite" aria-hidden="true">
+    <section class="draw-panel">
+      <h2 id="drawTitle">Losovanie</h2>
+      <div class="draw-list" id="drawList"></div>
+    </section>
+  </div>
+
   <script>
     (() => {
-      const STORAGE_PREFIX = "tenis-padel-turnaj-v1";
-      const LEGACY_STORAGE_KEY = "tenis-padel-turnaj-v1";
+      const STORAGE_PREFIX = "tenis-padel-turnaj-v2";
+      const LEGACY_STORAGE_PREFIX = "tenis-padel-turnaj-v1";
+      const TOURNAMENT_INDEX_KEY = `${STORAGE_PREFIX}:index`;
       const SELECTED_TOURNAMENT_KEY = `${STORAGE_PREFIX}:selected`;
       const SUPABASE_URL = "https://xnceffkqjiuqxezqagag.supabase.co";
       const SUPABASE_ANON_KEY = "sb_publishable_CI2xiMwVBj8SCnfZ9u5U-Q_jXvuvyJC";
-      const DEFAULT_TOURNAMENT_ID = "tenis-padel-2026";
       const REMOTE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-      const TENNIS_POINTS = { 1: 12, 2: 10, 3: 8, 4: 7, 5: 5, 6: 4, 7: 2, 8: 1 };
+      const PLACEMENT_POINTS = { 1: 12, 2: 10, 3: 8, 4: 7, 5: 5, 6: 4, 7: 2, 8: 1 };
+      const TENNIS_POINTS = PLACEMENT_POINTS;
       const TABS = [
         ["join", "Turnaj"],
         ["setup", "Setup"],
@@ -549,20 +631,40 @@
       const modalTitle = document.getElementById("modalTitle");
       const modalSubtitle = document.getElementById("modalSubtitle");
       const scoreForm = document.getElementById("scoreForm");
+      const drawOverlay = document.getElementById("drawOverlay");
+      const drawTitle = document.getElementById("drawTitle");
+      const drawList = document.getElementById("drawList");
+
+      clearLegacyTournamentHistory();
 
       let tournamentId = getInitialTournamentId();
       let state = loadState();
-      let activeTab = tournamentId ? state.setupDone ? "groups" : "setup" : "join";
+      let activeTab = getInitialTab() || (tournamentId ? state.setupDone ? "groups" : "setup" : "join");
       let syncTimer = null;
 
       function getInitialTournamentId() {
         const params = new URLSearchParams(window.location.search);
         const fromUrl = normalizeTournamentId(params.get("turnaj"));
         if (fromUrl) {
-          localStorage.setItem(SELECTED_TOURNAMENT_KEY, fromUrl);
           return fromUrl;
         }
-        return normalizeTournamentId(localStorage.getItem(SELECTED_TOURNAMENT_KEY)) || DEFAULT_TOURNAMENT_ID;
+        return null;
+      }
+
+      function getInitialTab() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("tab") === "rules" ? "rules" : null;
+      }
+
+      function clearLegacyTournamentHistory() {
+        const legacyKeys = [];
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const key = localStorage.key(i);
+          if (key === LEGACY_STORAGE_PREFIX || key?.startsWith(`${LEGACY_STORAGE_PREFIX}:`)) {
+            legacyKeys.push(key);
+          }
+        }
+        legacyKeys.forEach((key) => localStorage.removeItem(key));
       }
 
       function normalizeTournamentId(value) {
@@ -601,8 +703,7 @@
       function loadState() {
         if (!tournamentId) return emptyState();
         try {
-          let raw = localStorage.getItem(currentStorageKey());
-          if (!raw && tournamentId === DEFAULT_TOURNAMENT_ID) raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+          const raw = localStorage.getItem(currentStorageKey());
           if (!raw) return emptyState();
           const parsed = JSON.parse(raw);
           return normalizeState(parsed);
@@ -618,11 +719,20 @@
           ...value,
           tournamentId,
           groups: { ...base.groups, ...(value.groups || {}) },
+          tennisMatches: normalizeMatches(value.tennisMatches || []),
+          padelMatches: normalizeMatches(value.padelMatches || []),
           auditLog: Array.isArray(value.auditLog) ? value.auditLog : [],
           undoStack: Array.isArray(value.undoStack) ? value.undoStack : [],
           padelTargetRounds: value.padelTargetRounds || 13,
           updatedAt: value.updatedAt || value.createdAt || base.updatedAt
         };
+      }
+
+      function normalizeMatches(matches) {
+        return Array.isArray(matches) ? matches.map((match) => ({
+          ...match,
+          status: match.status === "deferred" && !match.result ? "deferred" : "scheduled"
+        })) : [];
       }
 
       function snapshotCoreState(source = state) {
@@ -680,8 +790,32 @@
         if (options.touch !== false) state.updatedAt = new Date().toISOString();
         localStorage.setItem(currentStorageKey(), JSON.stringify(state));
         localStorage.setItem(SELECTED_TOURNAMENT_KEY, tournamentId);
+        rememberTournament(state);
         setSyncStatus(REMOTE_ENABLED ? "uložené lokálne" : "uložené lokálne");
         if (options.remote !== false) queueRemoteSave();
+      }
+
+      function rememberTournament(source = state) {
+        if (!tournamentId) return;
+        const players = Array.isArray(source.players) ? source.players.map((player) => player.name).filter(Boolean) : [];
+        const entry = {
+          id: tournamentId,
+          setupDone: Boolean(source.setupDone),
+          players,
+          updatedAt: source.updatedAt || new Date().toISOString()
+        };
+        const index = getTournamentIndex().filter((item) => item.id !== tournamentId);
+        index.unshift(entry);
+        localStorage.setItem(TOURNAMENT_INDEX_KEY, JSON.stringify(index.slice(0, 30)));
+      }
+
+      function getTournamentIndex() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(TOURNAMENT_INDEX_KEY) || "[]");
+          return Array.isArray(parsed) ? parsed.filter((item) => normalizeTournamentId(item.id)) : [];
+        } catch {
+          return [];
+        }
       }
 
       function setSyncStatus(text) {
@@ -794,8 +928,11 @@
         renderTabs();
         phaseLabel.textContent = getPhaseLabel();
         if (!tournamentId) {
-          activeTab = "join";
-          renderJoin();
+          if (activeTab === "rules") renderRules();
+          else {
+            activeTab = "join";
+            renderJoin();
+          }
           return;
         }
         if (activeTab === "join") renderJoin();
@@ -816,9 +953,9 @@
         tabsEl.innerHTML = "";
         TABS.forEach(([id, label]) => {
           if (id === "join") {
-            label = tournamentId ? `Turnaj: ${tournamentId}` : "Turnaj";
+            label = "Domov";
           }
-          if (!tournamentId && id !== "join") return;
+          if (!tournamentId && !["join", "rules"].includes(id)) return;
           if (!state.setupDone && !["join", "setup", "rules"].includes(id)) return;
           if (state.setupDone && id === "setup") return;
           const button = document.createElement("button");
@@ -826,7 +963,12 @@
           button.type = "button";
           button.textContent = label;
           button.addEventListener("click", () => {
+            if (id === "join") {
+              goHome();
+              return;
+            }
             activeTab = id;
+            updateTabUrl(id);
             render();
           });
           tabsEl.appendChild(button);
@@ -834,6 +976,7 @@
       }
 
       function getPhaseLabel() {
+        if (activeTab === "rules") return "Pravidlá";
         if (!tournamentId) return "Vyber turnaja";
         if (!state.setupDone) return "Príprava hráčov";
         if (!allGroupMatchesComplete()) return "Tenis - skupiny";
@@ -843,29 +986,38 @@
       }
 
       function renderJoin() {
-        const shareUrl = getTournamentUrl(tournamentId || DEFAULT_TOURNAMENT_ID);
+        const tournaments = getTournamentIndex();
         app.innerHTML = `
           <section class="panel">
             <div class="section-title">
-              <h2>Vstup do turnaja</h2>
+              <h2>Domov</h2>
               <span class="badge ${REMOTE_ENABLED ? "good" : ""}">${REMOTE_ENABLED ? "online sync" : "offline"}</span>
             </div>
-            <p class="muted small">Zadaj kód turnaja. Každý kód má vlastné výsledky a vlastný zdieľateľný odkaz.</p>
+            <p class="muted small">Vyber existujúci turnaj z tohto prehliadača alebo vytvor nový kód turnaja.</p>
+            <div class="actions">
+              <button class="secondary" type="button" id="openRules">Otvoriť pravidlá</button>
+              <button class="secondary" type="button" id="copyRulesLink">Kopírovať odkaz na pravidlá</button>
+            </div>
             <form id="joinForm">
               <div class="setup-grid">
-                <input required maxlength="48" name="tournamentId" value="${escapeHtml(tournamentId || DEFAULT_TOURNAMENT_ID)}" placeholder="napr. tenis-padel-2026" autocomplete="off">
+                <input required maxlength="48" name="tournamentId" value="" placeholder="napr. tenis-padel-2026" autocomplete="off">
               </div>
               <div class="actions">
-                <button type="submit">Vstúpiť do turnaja</button>
-                <button class="secondary" type="button" id="copyJoinTournamentLink" ${tournamentId ? "" : "disabled"}>Kopírovať odkaz</button>
+                <button type="submit">Vytvoriť / otvoriť turnaj</button>
               </div>
             </form>
-            ${tournamentId ? `
-              <p class="muted small">Aktuálny turnaj: <strong>${escapeHtml(tournamentId)}</strong></p>
-              <p class="muted small">Odkaz: ${escapeHtml(shareUrl)}</p>
-            ` : ""}
           </section>
-          ${state.setupDone ? renderAdminPanel() : ""}
+          <section class="panel" style="margin-top:14px">
+            <div class="section-title">
+              <h2>Vytvorené turnaje</h2>
+              <span class="badge">${tournaments.length}</span>
+            </div>
+            ${tournaments.length ? `
+              <div class="match-list">
+                ${tournaments.map(renderTournamentCard).join("")}
+              </div>
+            ` : `<div class="empty">Zatiaľ tu nie je žiadny turnaj. Zadaj nový kód vyššie.</div>`}
+          </section>
         `;
         document.getElementById("joinForm").addEventListener("submit", (event) => {
           event.preventDefault();
@@ -877,11 +1029,39 @@
           }
           switchTournament(nextId);
         });
-        const copy = document.getElementById("copyJoinTournamentLink");
-        if (copy) {
-          copy.addEventListener("click", () => copyText(getTournamentUrl(tournamentId), "Odkaz na turnaj je skopírovaný."));
-        }
-        bindAdminButtons();
+        document.querySelectorAll("[data-open-tournament]").forEach((button) => {
+          button.addEventListener("click", () => switchTournament(button.dataset.openTournament));
+        });
+        document.querySelectorAll("[data-copy-tournament]").forEach((button) => {
+          button.addEventListener("click", () => copyText(getTournamentUrl(button.dataset.copyTournament), "Odkaz na turnaj je skopírovaný."));
+        });
+        document.getElementById("openRules")?.addEventListener("click", () => {
+          activeTab = "rules";
+          updateTabUrl("rules");
+          render();
+        });
+        document.getElementById("copyRulesLink")?.addEventListener("click", () => {
+          copyText(getRulesUrl(), "Odkaz na pravidlá je skopírovaný.");
+        });
+      }
+
+      function renderTournamentCard(item) {
+        const players = item.players?.length ? item.players.join(", ") : "hráči ešte nie sú zadaní";
+        const updated = item.updatedAt ? new Date(item.updatedAt).toLocaleString("sk-SK") : "neznáme";
+        return `
+          <div class="match-card" style="padding:12px">
+            <div class="match-meta">
+              <span>${escapeHtml(item.id)}</span>
+              <span class="badge ${item.setupDone ? "good" : "warn"}">${item.setupDone ? "rozbehnutý" : "setup"}</span>
+            </div>
+            <p class="muted small">${escapeHtml(players)}</p>
+            <p class="muted small">Posledná zmena: ${escapeHtml(updated)}</p>
+            <div class="actions">
+              <button type="button" data-open-tournament="${escapeHtml(item.id)}">Otvoriť</button>
+              <button class="secondary" type="button" data-copy-tournament="${escapeHtml(item.id)}">Kopírovať odkaz</button>
+            </div>
+          </div>
+        `;
       }
 
       function switchTournament(nextId) {
@@ -889,20 +1069,49 @@
         localStorage.setItem(SELECTED_TOURNAMENT_KEY, tournamentId);
         updateTournamentUrl();
         state = loadState();
+        rememberTournament(state);
         activeTab = state.setupDone ? "groups" : "setup";
         render();
         loadRemoteState();
       }
 
+      function goHome() {
+        tournamentId = null;
+        localStorage.removeItem(SELECTED_TOURNAMENT_KEY);
+        state = emptyState();
+        activeTab = "join";
+        const url = new URL(window.location.href);
+        url.searchParams.delete("turnaj");
+        url.searchParams.delete("tab");
+        window.history.replaceState({}, "", url);
+        render();
+      }
+
+      function updateTabUrl(tab) {
+        const url = new URL(window.location.href);
+        if (tab === "rules") url.searchParams.set("tab", "rules");
+        else url.searchParams.delete("tab");
+        window.history.replaceState({}, "", url);
+      }
+
       function updateTournamentUrl() {
         const url = new URL(window.location.href);
         url.searchParams.set("turnaj", tournamentId);
+        url.searchParams.delete("tab");
         window.history.replaceState({}, "", url);
       }
 
       function getTournamentUrl(id) {
         const url = new URL(window.location.href);
         url.searchParams.set("turnaj", id);
+        url.searchParams.delete("tab");
+        return url.toString();
+      }
+
+      function getRulesUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("turnaj");
+        url.searchParams.set("tab", "rules");
         return url.toString();
       }
 
@@ -923,7 +1132,7 @@
             </form>
           </section>
         `;
-        document.getElementById("setupForm").addEventListener("submit", (event) => {
+        document.getElementById("setupForm").addEventListener("submit", async (event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
           const names = Array.from({ length: 8 }, (_, i) => String(form.get(`player${i}`)).trim());
@@ -932,11 +1141,11 @@
             window.alert("Zadaj 8 neprázdnych a rozdielnych mien.");
             return;
           }
-          startTournament(names);
+          await startTournament(names);
         });
       }
 
-      function startTournament(names) {
+      async function startTournament(names) {
         const before = snapshotCoreState();
         const players = shuffle(names).map((name, index) => ({
           id: `p${index + 1}`,
@@ -945,6 +1154,10 @@
         }));
         const groupA = players.slice(0, 4).map((p) => p.id);
         const groupB = players.slice(4, 8).map((p) => p.id);
+        await runDrawAnimation("Rozlosovanie turnaja", [
+          { label: "Skupina A", value: groupA.map((id) => players.find((p) => p.id === id).name).join(", ") },
+          { label: "Skupina B", value: groupB.map((id) => players.find((p) => p.id === id).name).join(", ") }
+        ], names);
         state = {
           ...emptyState(),
           setupDone: true,
@@ -952,6 +1165,7 @@
           groups: { A: groupA, B: groupB },
           tennisMatches: createGroupMatches(groupA, groupB)
         };
+        state.padelMatches = [createPadelRound(1)];
         recordAudit(before, "Štart turnaja", {
           oldValue: { setupDone: false },
           newValue: { setupDone: true, players: players.map((p) => p.name) }
@@ -963,6 +1177,9 @@
 
       function renderGroups() {
         const matches = state.tennisMatches.filter((m) => m.phase === "group");
+        const pending = matches.filter(isPendingMatch);
+        const deferred = matches.filter(isDeferredMatch);
+        const completed = matches.filter((m) => m.result);
         app.innerHTML = `
           ${renderLeaderMini()}
           <div class="group-grid">
@@ -970,8 +1187,9 @@
             ${renderGroupPanel("B")}
           </div>
           <section class="grid" style="margin-top:14px">
-            ${renderMatchSection("Zápasy na zadanie", matches.filter((m) => !m.result), "Žiadny skupinový zápas nečaká na výsledok.")}
-            ${renderMatchSection("Dokončené zápasy", matches.filter((m) => m.result), "Zatiaľ nie je uložený žiadny výsledok.")}
+            ${renderMatchSection("Zápasy na zadanie", pending, "Žiadny skupinový zápas nečaká na výsledok.")}
+            ${renderMatchSection("Odložené zápasy", deferred, "Žiadny skupinový zápas nie je odložený.")}
+            ${renderMatchSection("Dokončené zápasy", completed, "Zatiaľ nie je uložený žiadny výsledok.")}
           </section>
           ${renderAdminPanel()}
         `;
@@ -1010,13 +1228,17 @@
       function renderPlayoff() {
         const groupDone = allGroupMatchesComplete();
         const matches = state.tennisMatches.filter((m) => m.phase === "playoff");
+        const pending = matches.filter(isPendingMatch);
+        const deferred = matches.filter(isDeferredMatch);
+        const completed = matches.filter((m) => m.result);
         app.innerHTML = `
           ${renderLeaderMini()}
-          ${!groupDone ? `<section class="empty">Playoff sa naplní po dokončení všetkých skupinových zápasov.</section>` : ""}
+          ${!groupDone ? `<section class="empty">Playoff sa naplní po dokončení všetkých skupinových zápasov. Odložené zápasy najprv dopíš alebo uzavri ako remízu.</section>` : ""}
           <section class="grid">
             ${renderTennisPlacements()}
-            ${renderMatchSection("Zápasy na zadanie", matches.filter((m) => !m.result), "Playoff je dokončené alebo ešte nepozná hráčov.")}
-            ${renderMatchSection("Dokončené zápasy", matches.filter((m) => m.result), "Zatiaľ nie je uložený žiadny playoff výsledok.")}
+            ${renderMatchSection("Zápasy na zadanie", pending, "Playoff je dokončené alebo ešte nepozná hráčov.")}
+            ${renderMatchSection("Odložené zápasy", deferred, "Žiadny playoff zápas nie je odložený.")}
+            ${renderMatchSection("Dokončené zápasy", completed, "Zatiaľ nie je uložený žiadny playoff výsledok.")}
           </section>
           ${renderAdminPanel()}
         `;
@@ -1026,7 +1248,9 @@
 
       function renderPadel() {
         const completed = state.padelMatches.filter((m) => m.result);
-        const pending = state.padelMatches.filter((m) => !m.result);
+        const pending = state.padelMatches.filter(isPendingMatch);
+        const deferred = state.padelMatches.filter(isDeferredMatch);
+        const activePending = pending.find((m) => m.phase === "padel");
         app.innerHTML = `
           ${renderLeaderMini()}
           <section class="panel">
@@ -1034,16 +1258,23 @@
               <h2>Padel Americano</h2>
               <span class="badge">${completed.length}/${state.padelTargetRounds} kôl</span>
             </div>
-            <p class="muted small">Skóre z každého zápasu sa pripočíta obom hráčom v dvojici. Ďalšie kolo sa vytvorí po uložení aktuálneho výsledku.</p>
+            <p class="muted small">Surové skóre určí padel poradie. Do celkovej tabuľky sa započítajú umiestňovacie body 12-1 rovnako ako v tenise.</p>
+            ${activePending ? `
+              <div class="actions">
+                <button class="secondary" type="button" id="rerollPadelRound">Prelosovať štvoricu</button>
+              </div>
+            ` : ""}
           </section>
           <section class="grid" style="margin-top:14px">
             ${renderPadelStandings()}
-            ${renderMatchSection("Aktuálne kolo", pending, "Všetky padel kolá sú dokončené.")}
+            ${renderMatchSection("Aktuálne kolo", pending, "Žiadne aktuálne padel kolo nečaká na výsledok.")}
+            ${renderMatchSection("Odložené kolá", deferred, "Žiadne padel kolo nie je odložené.")}
             ${renderMatchSection("Odohrané kolá", completed, "Zatiaľ nie je uložený žiadny padel výsledok.")}
           </section>
           ${renderAdminPanel()}
         `;
         bindMatchButtons();
+        bindPadelButtons();
         bindAdminButtons();
       }
 
@@ -1058,9 +1289,12 @@
             ${renderLeaderboardTable()}
           </section>
           ${renderTennisPlacements()}
-          ${renderAdminPanel()}
+          <section style="margin-top:14px">
+            ${renderPadelStandings()}
+          </section>
+          ${tournamentId ? renderAdminPanel() : ""}
         `;
-        bindAdminButtons();
+        if (tournamentId) bindAdminButtons();
       }
 
       function renderRules() {
@@ -1118,8 +1352,21 @@
               <ul class="rules-list">
                 <li>Hrá sa na 1 kurte, v každom kole hrajú 4 hráči a 4 čakajú.</li>
                 <li>Formát zápasu je tiebreak do 16 bodov. Pri 15:15 sa hrá na rozdiel 2 bodov.</li>
-                <li>Appka vyberá hráčov s menším počtom padel zápasov a tvorí dvojice podľa aktuálneho poradia.</li>
-                <li>Padel body hráča sú surové body získané jeho dvojicou vo všetkých padel zápasoch.</li>
+                <li>Appka vyberá štvoricu tak, aby vyrovnávala počet padel zápasov, oddych medzi kolami a aktuálne skóre.</li>
+                <li>Dvojice sa skladajú tak, aby sa čo najmenej opakovali partneri aj súperi.</li>
+                <li>Ak niekto nemôže nastúpiť, aktuálne neodohrané kolo sa dá prelosovať a zadať nedostupný hráč.</li>
+              </ul>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h2>Padelové bodovanie</h2>
+                <span class="badge good">ako tenis</span>
+              </div>
+              <ul class="rules-list">
+                <li>Surové padel skóre je súčet bodov, ktoré hráčova dvojica získala vo všetkých padel zápasoch.</li>
+                <li>Surové skóre určí padel poradie. Pri zhode rozhoduje počet odohraných zápasov a potom pôvodné losovanie.</li>
+                <li>Do celkového poradia sa započítajú umiestňovacie body 12, 10, 8, 7, 5, 4, 2, 1.</li>
               </ul>
             </section>
 
@@ -1129,8 +1376,9 @@
                 <span class="badge good">live</span>
               </div>
               <ul class="rules-list">
-                <li>Celkový výsledok = tenisové body za umiestnenie + padel body.</li>
+                <li>Celkový výsledok = tenisové body za umiestnenie + padelové body za umiestnenie.</li>
                 <li>Tabuľka sa prepočíta okamžite po každom uloženom výsledku.</li>
+                <li>Celková tabuľka, tenisové umiestnenie a padelová tabuľka sú dostupné počas celého turnaja.</li>
                 <li>${REMOTE_ENABLED ? "Každý s odkazom na stránku môže výsledky zadať alebo upraviť." : "Teraz je zapnuté lokálne ukladanie. Po doplnení Supabase údajov budú výsledky zdieľané cez URL."}</li>
               </ul>
             </section>
@@ -1142,6 +1390,8 @@
               </div>
               <ul class="rules-list">
                 <li>Chybný výsledok opravíš tapnutím na dokončený zápas a prepísaním výsledku.</li>
+                <li>Zápas sa dá odložiť bez bodov a dopísať neskôr. V tabuľkách sa nepočíta, kým nemá výsledok.</li>
+                <li>Ak sa k odloženému zápasu už nevrátite, uzavri ho ako remízu 8:8.</li>
                 <li>Kontumácia je povolená vo všetkých zápasoch. Uloží sa ako 16:0 pri tiebreaku alebo 4:0 pri playoff sete.</li>
                 <li>Remíza / nedohrané je povolená iba v skupinách a padeli. Uloží sa ako 8:8 bez výhry a prehry.</li>
                 <li>Playoff musí mať víťaza. Pri zmene skoršieho playoff zápasu sa zmažú iba nadväzujúce výsledky.</li>
@@ -1199,7 +1449,7 @@
             </div>
             <table class="score-table">
               <thead>
-                <tr><th>#</th><th>Hráč</th><th>Zápasy</th><th>Body</th></tr>
+                <tr><th>#</th><th>Hráč</th><th>Zápasy</th><th>Skóre</th><th>Body</th></tr>
               </thead>
               <tbody>
                 ${stats.map((row, index) => `
@@ -1207,7 +1457,8 @@
                     <td>${index + 1}</td>
                     <td class="player-name">${escapeHtml(getPlayer(row.id).name)}</td>
                     <td>${row.games}</td>
-                    <td><strong>${row.points}</strong></td>
+                    <td>${row.points}</td>
+                    <td><strong>${row.placementPoints}</strong></td>
                   </tr>
                 `).join("")}
               </tbody>
@@ -1244,6 +1495,14 @@
         `;
       }
 
+      function isDeferredMatch(match) {
+        return !match.result && match.status === "deferred";
+      }
+
+      function isPendingMatch(match) {
+        return !match.result && match.status !== "deferred";
+      }
+
       function renderMatchSection(title, matches, emptyText) {
         const visible = matches.filter((match) => match.phase !== "playoff" || canResolveMatch(match));
         const hidden = matches.length - visible.length;
@@ -1263,12 +1522,14 @@
         const isReady = resolved.every(Boolean);
         const score = formatResult(match);
         const meta = match.phase === "padel" ? `Kolo ${match.round}` : match.label;
+        const statusClass = isDeferredMatch(match) ? " deferred" : "";
+        const badgeClass = match.result ? "good" : isDeferredMatch(match) ? "warn" : isReady ? "warn" : "";
         return `
-          <button class="match-card" type="button" data-match-id="${match.id}" ${isReady ? "" : "disabled"}>
+          <button class="match-card${statusClass}" type="button" data-match-id="${match.id}" ${isReady ? "" : "disabled"}>
             <div class="match-body">
               <div class="match-meta">
                 <span>${escapeHtml(meta)}</span>
-                <span class="badge ${match.result ? "good" : isReady ? "warn" : ""}">${resultBadge(match)}</span>
+                <span class="badge ${badgeClass}">${resultBadge(match)}</span>
               </div>
               <div class="teams">
                 <div class="team-row">
@@ -1300,7 +1561,7 @@
             <div class="actions">
               <button class="secondary" type="button" id="syncState" ${REMOTE_ENABLED ? "" : "disabled"}>Synchronizovať</button>
               <button class="secondary" type="button" id="undoLastChange" ${canUndo ? "" : "disabled"}>Späť poslednú zmenu</button>
-              <button class="secondary" type="button" id="changeTournament">Zmeniť turnaj</button>
+              <button class="secondary" type="button" id="changeTournament">Domov</button>
               <button class="secondary" type="button" id="copyTournamentLink" ${shareUrl ? "" : "disabled"}>Kopírovať odkaz</button>
               <button class="secondary" type="button" id="exportState">Export dát</button>
               <button class="secondary" type="button" id="downloadBackup">Stiahnuť zálohu</button>
@@ -1319,6 +1580,65 @@
             if (match && canResolveMatch(match)) openScoreModal(match);
           });
         });
+      }
+
+      function bindPadelButtons() {
+        const reroll = document.getElementById("rerollPadelRound");
+        if (!reroll) return;
+        reroll.addEventListener("click", rerollCurrentPadelRound);
+      }
+
+      async function rerollCurrentPadelRound() {
+        const current = state.padelMatches.find(isPendingMatch);
+        if (!current) return;
+        const unavailable = window.prompt("Ak niekto nemôže nastúpiť, napíš meno alebo viac mien oddelených čiarkou. Ak nikto nechýba, nechaj prázdne.");
+        if (unavailable === null) return;
+        const blockedIds = parseUnavailablePlayers(unavailable);
+        if (!blockedIds) return;
+        if (state.players.filter((player) => !blockedIds.has(player.id)).length < 4) {
+          window.alert("Na padel kolo musia ostať aspoň 4 dostupní hráči.");
+          return;
+        }
+        if (!(await confirmRemoteFreshness())) return;
+        const replacement = createPadelRound(current.round, { blockedIds, currentMatch: current });
+        if (!window.confirm(`Prelosovať aktuálne kolo na ${teamName(replacement.side1.players)} vs ${teamName(replacement.side2.players)}?`)) return;
+        const before = snapshotCoreState();
+        await runDrawAnimation(`Prelosovanie padel kola ${current.round}`, formatPadelDrawItems(replacement));
+        const index = state.padelMatches.findIndex((match) => match.id === current.id);
+        state.padelMatches[index] = replacement;
+        recordAudit(before, "Prelosovanie padel kola", {
+          matchId: replacement.id,
+          matchLabel: replacement.label,
+          oldValue: {
+            side1: current.side1,
+            side2: current.side2
+          },
+          newValue: {
+            side1: replacement.side1,
+            side2: replacement.side2,
+            blockedIds: [...blockedIds]
+          }
+        });
+        saveState();
+        render();
+      }
+
+      function parseUnavailablePlayers(value) {
+        const names = String(value || "")
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean);
+        const blocked = new Set();
+        for (const name of names) {
+          const normalized = name.toLocaleLowerCase("sk");
+          const matches = state.players.filter((player) => player.name.toLocaleLowerCase("sk").includes(normalized));
+          if (matches.length !== 1) {
+            window.alert(`Neviem jednoznačne nájsť hráča "${name}". Použi presné meno z turnaja.`);
+            return null;
+          }
+          blocked.add(matches[0].id);
+        }
+        return blocked;
       }
 
       function bindAdminButtons() {
@@ -1357,8 +1677,7 @@
         const changeTournament = document.getElementById("changeTournament");
         if (changeTournament) {
           changeTournament.addEventListener("click", () => {
-            activeTab = "join";
-            render();
+            goHome();
           });
         }
         const copyTournamentLink = document.getElementById("copyTournamentLink");
@@ -1406,6 +1725,7 @@
           const before = snapshotCoreState();
           const previousResult = match.result ? JSON.parse(JSON.stringify(match.result)) : null;
           if (!prepareForResultChange(match)) return;
+          match.status = "scheduled";
           match.result = {
             ...result.result,
             savedAt: new Date().toISOString()
@@ -1416,8 +1736,11 @@
             oldValue: previousResult,
             newValue: match.result
           });
-          saveState();
           closeModal();
+          if (match.phase === "padel") {
+            await appendNextPadelRoundWithAnimation();
+          }
+          saveState();
           render();
         };
         const cancel = scoreForm.querySelector("[data-cancel]");
@@ -1431,6 +1754,7 @@
             const previousResult = match.result ? JSON.parse(JSON.stringify(match.result)) : null;
             if (!prepareForResultChange(match)) return;
             delete match.result;
+            match.status = "scheduled";
             recordAudit(before, "Vymazanie výsledku", {
               matchId: match.id,
               matchLabel: match.label,
@@ -1439,6 +1763,48 @@
             });
             saveState();
             closeModal();
+            render();
+          });
+        }
+        const defer = scoreForm.querySelector("[data-defer]");
+        if (defer) {
+          defer.addEventListener("click", async () => {
+            if (!window.confirm("Odložiť tento zápas bez započítania bodov? Výsledok môžeš dopísať neskôr.")) return;
+            if (!(await confirmRemoteFreshness())) return;
+            const before = snapshotCoreState();
+            match.status = "deferred";
+            recordAudit(before, "Odloženie zápasu", {
+              matchId: match.id,
+              matchLabel: match.label,
+              newValue: { status: match.status }
+            });
+            closeModal();
+            if (match.phase === "padel") {
+              await appendNextPadelRoundWithAnimation();
+            }
+            saveState();
+            render();
+          });
+        }
+        const closeAsDraw = scoreForm.querySelector("[data-close-draw]");
+        if (closeAsDraw) {
+          closeAsDraw.addEventListener("click", async () => {
+            if (!window.confirm("Uzavrieť odložený zápas ako remízu 8:8?")) return;
+            if (!(await confirmRemoteFreshness())) return;
+            const before = snapshotCoreState();
+            if (!prepareForResultChange(match)) return;
+            match.status = "scheduled";
+            match.result = drawResult();
+            recordAudit(before, "Uzavretie odloženého zápasu remízou", {
+              matchId: match.id,
+              matchLabel: match.label,
+              newValue: match.result
+            });
+            closeModal();
+            if (match.phase === "padel") {
+              await appendNextPadelRoundWithAnimation();
+            }
+            saveState();
             render();
           });
         }
@@ -1497,7 +1863,7 @@
             </div>
             ${forfeitBlock}
             <p class="error"></p>
-            ${modalActions(Boolean(match.result))}
+            ${modalActions(match)}
           `;
         }
         return `
@@ -1515,7 +1881,7 @@
           ${forfeitBlock}
           ${drawBlock}
           <p class="error"></p>
-          ${modalActions(Boolean(match.result))}
+          ${modalActions(match)}
         `;
       }
 
@@ -1531,14 +1897,32 @@
         update();
       }
 
-      function modalActions(hasResult) {
+      function modalActions(match) {
+        const hasResult = Boolean(match.result);
+        const canDefer = !hasResult && !isDeferredMatch(match);
+        const canCloseDraw = !hasResult && isDeferredMatch(match) && canDraw(match);
+        const actionCount = 2 + Number(hasResult) + Number(canDefer) + Number(canCloseDraw);
+        const className = actionCount > 3 ? "many" : actionCount === 3 ? "three" : "";
         return `
-          <div class="footer-actions ${hasResult ? "three" : ""}">
+          <div class="footer-actions ${className}">
             <button type="button" class="secondary" data-cancel>Zrušiť</button>
             ${hasResult ? `<button type="button" class="danger" data-clear>Vymazať</button>` : ""}
+            ${canDefer ? `<button type="button" class="warning" data-defer>Odložiť</button>` : ""}
+            ${canCloseDraw ? `<button type="button" class="secondary" data-close-draw>Remíza 8:8</button>` : ""}
             <button type="submit">Uložiť</button>
           </div>
         `;
+      }
+
+      function drawResult() {
+        return {
+          mode: "draw",
+          isDraw: true,
+          score1: 8,
+          score2: 8,
+          scoreLabel: "8:8 remíza",
+          savedAt: new Date().toISOString()
+        };
       }
 
       function readAndValidateResult(match, form) {
@@ -1764,26 +2148,49 @@
       function ensurePadelNextRound() {
         if (!state.setupDone) return;
         if (state.padelMatches.length >= state.padelTargetRounds) return;
-        if (state.padelMatches.some((m) => !m.result)) return;
+        if (state.padelMatches.some(isPendingMatch)) return;
         state.padelMatches.push(createPadelRound(state.padelMatches.length + 1));
         saveState();
       }
 
-      function createPadelRound(round) {
-        const stats = getPadelStatsForSelection();
-        const active = [...stats]
-          .sort((a, b) => a.games - b.games || a.points - b.points || a.lastRound - b.lastRound || a.drawIndex - b.drawIndex)
-          .slice(0, 4)
+      async function appendNextPadelRoundWithAnimation() {
+        if (!state.setupDone) return false;
+        if (state.padelMatches.length >= state.padelTargetRounds) return false;
+        if (state.padelMatches.some(isPendingMatch)) return false;
+        const before = snapshotCoreState();
+        const next = createPadelRound(state.padelMatches.length + 1);
+        await runDrawAnimation(`Padel - kolo ${next.round}`, formatPadelDrawItems(next));
+        state.padelMatches.push(next);
+        recordAudit(before, "Losovanie padel kola", {
+          matchId: next.id,
+          matchLabel: next.label,
+          newValue: {
+            side1: next.side1,
+            side2: next.side2
+          }
+        });
+        return true;
+      }
+
+      function createPadelRound(round, options = {}) {
+        const blockedIds = new Set(options.blockedIds || []);
+        const stats = getPadelStatsForSelection().filter((row) => !blockedIds.has(row.id));
+        const active = selectPadelPlayers(stats, options)
           .sort((a, b) => b.points - a.points || a.games - b.games || a.drawIndex - b.drawIndex);
         const pairings = [
           [[active[0].id, active[3].id], [active[1].id, active[2].id]],
           [[active[0].id, active[2].id], [active[1].id, active[3].id]],
           [[active[0].id, active[1].id], [active[2].id, active[3].id]]
         ];
-        const history = getPadelPairHistory();
+        const partnerHistory = getPadelPartnerHistory();
+        const opponentHistory = getPadelOpponentHistory();
         const best = pairings
-          .map((pairs, index) => ({ pairs, index, repeats: pairRepeatScore(pairs, history) }))
-          .sort((a, b) => a.repeats - b.repeats || a.index - b.index)[0].pairs;
+          .map((pairs, index) => ({
+            pairs,
+            index,
+            score: pairingRepeatScore(pairs, partnerHistory, opponentHistory, options.currentMatch)
+          }))
+          .sort((a, b) => a.score - b.score || a.index - b.index)[0].pairs;
         return {
           id: `padel-${round}`,
           phase: "padel",
@@ -1793,6 +2200,45 @@
           side1: { players: best[0] },
           side2: { players: best[1] }
         };
+      }
+
+      function selectPadelPlayers(stats, options = {}) {
+        if (stats.length < 4) return stats;
+        const currentKey = options.currentMatch ? quartetKey(resolveMatchPlayers(options.currentMatch).flat()) : null;
+        return combinations(stats, 4)
+          .map((players) => {
+            const games = players.map((row) => row.games);
+            const points = players.reduce((sum, row) => sum + row.points, 0);
+            const lastRounds = players.reduce((sum, row) => sum + row.lastRound, 0);
+            const drawIndex = players.reduce((sum, row) => sum + row.drawIndex, 0);
+            const sameQuartet = currentKey && quartetKey(players.map((row) => row.id)) === currentKey ? 1 : 0;
+            return {
+              players,
+              score:
+                (games.reduce((sum, value) => sum + value, 0) * 1000) +
+                ((Math.max(...games) - Math.min(...games)) * 240) +
+                (sameQuartet * 120) +
+                (lastRounds * 4) +
+                (points * 0.1) +
+                (drawIndex * 0.01)
+            };
+          })
+          .sort((a, b) => a.score - b.score)[0].players;
+      }
+
+      function combinations(items, size) {
+        const result = [];
+        const walk = (start, picked) => {
+          if (picked.length === size) {
+            result.push(picked);
+            return;
+          }
+          for (let i = start; i <= items.length - (size - picked.length); i += 1) {
+            walk(i + 1, [...picked, items[i]]);
+          }
+        };
+        walk(0, []);
+        return result;
       }
 
       function getGroupStandings(group) {
@@ -1858,7 +2304,13 @@
       }
 
       function getPadelStats() {
-        return getPadelStatsForSelection().sort((a, b) => b.points - a.points || a.games - b.games || a.drawIndex - b.drawIndex);
+        const hasResults = state.padelMatches.some((match) => match.result);
+        return getPadelStatsForSelection()
+          .sort((a, b) => b.points - a.points || b.games - a.games || a.drawIndex - b.drawIndex)
+          .map((row, index) => ({
+            ...row,
+            placementPoints: hasResults ? PLACEMENT_POINTS[index + 1] || 0 : 0
+          }));
       }
 
       function getPadelStatsForSelection() {
@@ -1886,7 +2338,7 @@
         return rows;
       }
 
-      function getPadelPairHistory() {
+      function getPadelPartnerHistory() {
         const history = new Map();
         state.padelMatches.filter((m) => m.result).forEach((match) => {
           resolveMatchPlayers(match).forEach((team) => {
@@ -1897,17 +2349,46 @@
         return history;
       }
 
-      function pairRepeatScore(pairs, history) {
-        return pairs.reduce((sum, pair) => sum + (history.get(pairKey(pair)) || 0), 0);
+      function getPadelOpponentHistory() {
+        const history = new Map();
+        state.padelMatches.filter((m) => m.result).forEach((match) => {
+          const teams = resolveMatchPlayers(match);
+          teams[0].forEach((left) => {
+            teams[1].forEach((right) => {
+              const key = pairKey([left, right]);
+              history.set(key, (history.get(key) || 0) + 1);
+            });
+          });
+        });
+        return history;
+      }
+
+      function pairingRepeatScore(pairs, partnerHistory, opponentHistory, currentMatch) {
+        const partnerRepeats = pairs.reduce((sum, pair) => sum + (partnerHistory.get(pairKey(pair)) || 0), 0);
+        const opponentRepeats = pairs[0].reduce((sum, left) => (
+          sum + pairs[1].reduce((inner, right) => inner + (opponentHistory.get(pairKey([left, right])) || 0), 0)
+        ), 0);
+        const samePairing = currentMatch && samePadelPairing(pairs, resolveMatchPlayers(currentMatch)) ? 1 : 0;
+        return (partnerRepeats * 12) + (opponentRepeats * 3) + (samePairing * 80);
+      }
+
+      function samePadelPairing(left, right) {
+        const leftPairs = left.map(pairKey).sort().join("|");
+        const rightPairs = right.map(pairKey).sort().join("|");
+        return leftPairs === rightPairs;
       }
 
       function pairKey(pair) {
         return [...pair].sort().join("+");
       }
 
+      function quartetKey(ids) {
+        return [...ids].sort().join("+");
+      }
+
       function getOverallLeaderboard() {
         const tennis = getTennisPointsByPlayer();
-        const padel = Object.fromEntries(getPadelStatsForSelection().map((row) => [row.id, row.points]));
+        const padel = getPadelPointsByPlayer();
         return state.players.map((player) => ({
           id: player.id,
           name: player.name,
@@ -1916,6 +2397,10 @@
           total: (tennis[player.id] || 0) + (padel[player.id] || 0),
           drawIndex: player.drawIndex
         })).sort((a, b) => b.total - a.total || b.padel - a.padel || b.tennis - a.tennis || a.name.localeCompare(b.name, "sk"));
+      }
+
+      function getPadelPointsByPlayer() {
+        return Object.fromEntries(getPadelStats().map((row) => [row.id, row.placementPoints]));
       }
 
       function getTennisPointsByPlayer() {
@@ -2001,6 +2486,7 @@
       }
 
       function resultBadge(match) {
+        if (isDeferredMatch(match)) return "odložené";
         if (!match.result) return canResolveMatch(match) ? "zadať" : "čaká";
         if (match.result.mode === "forfeit") return "kontumácia";
         if (match.result.mode === "draw" || match.result.isDraw) return "remíza";
@@ -2014,6 +2500,43 @@
           [copy[i], copy[j]] = [copy[j], copy[i]];
         }
         return copy;
+      }
+
+      async function runDrawAnimation(title, finalItems, pool = null) {
+        const items = finalItems.map((item) => typeof item === "string" ? { label: "Los", value: item } : item);
+        const drawPool = pool?.length ? pool : items.flatMap((item) => String(item.value).split(/\s*,\s*/)).filter(Boolean);
+        drawTitle.textContent = title;
+        drawOverlay.classList.add("open");
+        drawOverlay.setAttribute("aria-hidden", "false");
+        for (let tick = 0; tick < 10; tick += 1) {
+          drawList.innerHTML = items.map((item) => `
+            <div class="draw-item">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(shuffle(drawPool).slice(0, Math.min(4, drawPool.length)).join(" + "))}</strong>
+            </div>
+          `).join("");
+          await sleep(55 + (tick * 14));
+        }
+        drawList.innerHTML = items.map((item) => `
+          <div class="draw-item">
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.value)}</strong>
+          </div>
+        `).join("");
+        await sleep(620);
+        drawOverlay.classList.remove("open");
+        drawOverlay.setAttribute("aria-hidden", "true");
+      }
+
+      function formatPadelDrawItems(match) {
+        return [
+          { label: "Dvojica 1", value: teamName(match.side1.players) },
+          { label: "Dvojica 2", value: teamName(match.side2.players) }
+        ];
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
       }
 
       function signed(number) {

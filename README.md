@@ -6,11 +6,23 @@ Jednoducha web appka pre jednodnovy turnaj 8 hracov v tenise a padeli.
 
 Otvor subor `index.html` priamo v prehliadaci. Appka nema build step, server, npm balicky ani externe JS kniznice.
 
+Lokalne sa da otvorit priamo:
+
+```text
+file:///C:/dev/tenis-padel-turnaj/index.html
+```
+
+Verejny odkaz na pravidla, ktory sa da poslat vopred:
+
+```text
+https://matuslong.github.io/tenis-padel-turnaj/?tab=rules
+```
+
 ## Ukladanie dat
 
 Appka vzdy uklada data do `localStorage` v danom prehliadaci, takze refresh alebo zatvorenie stranky na tom istom zariadeni nestrati progres.
 
-Ak doplnis Supabase konfiguraciu v `index.html`, rovnaky stav turnaja sa bude ukladat aj online a bude dostupny kazdemu s GitHub URL.
+Rovnaky stav turnaja sa uklada aj online cez Supabase a je dostupny kazdemu, kto ma URL stranky a pozna kod turnaja.
 
 Kazdy turnaj ma vlastny kod. Appka podporuje priame odkazy:
 
@@ -18,15 +30,25 @@ Kazdy turnaj ma vlastny kod. Appka podporuje priame odkazy:
 https://matuslong.github.io/tenis-padel-turnaj/?turnaj=tenis-padel-2026
 ```
 
-Pre novy turnaj zmen kod za `turnaj=` alebo otvor tab `Turnaj` priamo v appke a zadaj novy kod. Kod moze obsahovat male pismena, cisla a pomlcky.
+Pre novy turnaj otvor `Domov` priamo v appke a zadaj novy kod. Kod moze obsahovat male pismena, cisla a pomlcky. Domov zobrazuje lokalny zoznam turnajov, ktore boli v danom prehliadaci vytvorene alebo otvorene.
 
 V `index.html` vypln:
 
 ```js
 const SUPABASE_URL = "https://PROJECT.supabase.co";
 const SUPABASE_ANON_KEY = "ANON_PUBLIC_KEY";
-const DEFAULT_TOURNAMENT_ID = "tenis-padel-2026";
 ```
+
+Poznamka: appka aktualne pouziva lokalny storage prefix `tenis-padel-turnaj-v2`. Stara testovacia historia z `v1` sa pri nacitani vymaze.
+
+## Funkcie turnaja
+
+- Domov: vytvorenie alebo otvorenie turnaja, zoznam lokalne znamych turnajov a kopirovanie odkazu na pravidla.
+- Tenis: skupiny, playoff, live tabulky a bodovanie za umiestnenie `12, 10, 8, 7, 5, 4, 2, 1`.
+- Padel Americano: automaticke generovanie aktualneho kola, prelosovanie aktualnej stvorice a vyrovnavanie poctu zapasov.
+- Padel body: surove padel skore urci padel poradie, do celkovej tabulky ide rovnake umiestnovacie bodovanie ako v tenise.
+- Vysledky: zapas sa da zadat mimo poradia, odlozit bez bodov, dopisat neskor alebo uzavriet ako remizu `8:8`.
+- Losovanie: start turnaja, padel kolo a prelosovanie maju kratku shuffle animaciu.
 
 ## Supabase setup
 
@@ -66,6 +88,8 @@ Toto je zamerne verejne editovatelne nastavenie: kazdy, kto ma URL stranky a poz
 ## Nudzove pravidla
 
 - Chybny vysledok oprav tapnutim na dokonceny zapas.
+- Zapas sa da odlozit bez bodov a dopisat neskor.
+- Ak sa k odlozenemu zapasu uz nevratite, uzavri ho ako remizu `8:8`.
 - Kontumacia je povolena vo vsetkych zapasoch.
 - Kontumacia sa ulozi ako `16:0` pri tiebreaku alebo `4:0` pri playoff sete.
 - Remiza / nedohrane je povolena iba v tenisovych skupinach a v padeli.
