@@ -613,6 +613,8 @@
       const REMOTE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
       const PLACEMENT_POINTS = { 1: 12, 2: 10, 3: 8, 4: 7, 5: 5, 6: 4, 7: 2, 8: 1 };
       const TENNIS_POINTS = PLACEMENT_POINTS;
+      const TENNIS_GROUP_TIEBREAK_TARGET = 15;
+      const PADEL_AMERICANO_TOTAL_GAMES = 24;
       const TABS = [
         ["join", "Turnaj"],
         ["setup", "Setup"],
@@ -731,8 +733,15 @@
       function normalizeMatches(matches) {
         return Array.isArray(matches) ? matches.map((match) => ({
           ...match,
+          format: normalizeMatchFormat(match),
           status: match.status === "deferred" && !match.result ? "deferred" : "scheduled"
         })) : [];
+      }
+
+      function normalizeMatchFormat(match) {
+        if (match.phase === "group" && match.format === "tb16") return "tb15";
+        if (match.phase === "padel" && match.format === "tb16") return "americano24";
+        return match.format;
       }
 
       function snapshotCoreState(source = state) {
@@ -1258,7 +1267,7 @@
               <h2>Padel Americano</h2>
               <span class="badge">${completed.length}/${state.padelTargetRounds} kôl</span>
             </div>
-            <p class="muted small">Surové skóre určí padel poradie. Do celkovej tabuľky sa započítajú umiestňovacie body 12-1 rovnako ako v tenise.</p>
+            <p class="muted small">Surové padel hry určia padel poradie. Do celkovej tabuľky sa započítajú umiestňovacie body 12-1 rovnako ako v tenise.</p>
             ${activePending ? `
               <div class="actions">
                 <button class="secondary" type="button" id="rerollPadelRound">Prelosovať štvoricu</button>
@@ -1308,7 +1317,7 @@
               <ul class="rules-list">
                 <li>8 hráčov je náhodne rozdelených do skupiny A a skupiny B po 4 hráčoch.</li>
                 <li>V každej skupine hrá každý s každým, teda 6 zápasov na skupinu a 3 zápasy na hráča.</li>
-                <li>Formát zápasu je tiebreak do 16 bodov. Pri 15:15 sa hrá, kým niekto nevedie o 2 body.</li>
+                <li>Formát zápasu je tiebreak do 15 bodov. Pri 14:14 sa hrá, kým niekto nevedie o 2 body.</li>
                 <li>Poradie v skupine: výhry, rozdiel bodov, vzájomný zápas, získané body, pôvodné losovanie.</li>
               </ul>
             </section>
@@ -1347,11 +1356,11 @@
             <section class="panel">
               <div class="section-title">
                 <h2>Padel Americano</h2>
-                <span class="badge">13 kôl</span>
+                <span class="badge">24 hier</span>
               </div>
               <ul class="rules-list">
                 <li>Hrá sa na 1 kurte, v každom kole hrajú 4 hráči a 4 čakajú.</li>
-                <li>Formát zápasu je tiebreak do 16 bodov. Pri 15:15 sa hrá na rozdiel 2 bodov.</li>
+                <li>Formát zápasu je pevný počet 24 hier. Skóre dvojíc musí mať spolu presne 24, napríklad 18:6 alebo 12:12.</li>
                 <li>Appka vyberá štvoricu tak, aby vyrovnávala počet padel zápasov, oddych medzi kolami a aktuálne skóre.</li>
                 <li>Dvojice sa skladajú tak, aby sa čo najmenej opakovali partneri aj súperi.</li>
                 <li>Ak niekto nemôže nastúpiť, aktuálne neodohrané kolo sa dá prelosovať a zadať nedostupný hráč.</li>
@@ -1364,8 +1373,8 @@
                 <span class="badge good">ako tenis</span>
               </div>
               <ul class="rules-list">
-                <li>Surové padel skóre je súčet bodov, ktoré hráčova dvojica získala vo všetkých padel zápasoch.</li>
-                <li>Surové skóre určí padel poradie. Pri zhode rozhoduje počet odohraných zápasov a potom pôvodné losovanie.</li>
+                <li>Surové padel skóre je súčet hier, ktoré hráčova dvojica získala vo všetkých padel zápasoch.</li>
+                <li>Surové hry určia padel poradie. Pri zhode rozhoduje počet odohraných zápasov a potom pôvodné losovanie.</li>
                 <li>Do celkového poradia sa započítajú umiestňovacie body 12, 10, 8, 7, 5, 4, 2, 1.</li>
               </ul>
             </section>
@@ -1391,9 +1400,9 @@
               <ul class="rules-list">
                 <li>Chybný výsledok opravíš tapnutím na dokončený zápas a prepísaním výsledku.</li>
                 <li>Zápas sa dá odložiť bez bodov a dopísať neskôr. V tabuľkách sa nepočíta, kým nemá výsledok.</li>
-                <li>Ak sa k odloženému zápasu už nevrátite, uzavri ho ako remízu 8:8.</li>
-                <li>Kontumácia je povolená vo všetkých zápasoch. Uloží sa ako 16:0 pri tiebreaku alebo 4:0 pri playoff sete.</li>
-                <li>Remíza / nedohrané je povolená iba v skupinách a padeli. Uloží sa ako 8:8 bez výhry a prehry.</li>
+                <li>Ak sa k odloženému zápasu už nevrátite, uzavri ho ako remízu. V tenisovej skupine sa uloží 8:8, v padeli 12:12.</li>
+                <li>Kontumácia je povolená vo všetkých zápasoch. Uloží sa ako 15:0 v tenisovej skupine, 24:0 v padeli alebo 4:0 pri playoff sete.</li>
+                <li>Remíza / nedohrané je povolená iba v skupinách a padeli. Nepridá výhru ani prehru.</li>
                 <li>Playoff musí mať víťaza. Pri zmene skoršieho playoff zápasu sa zmažú iba nadväzujúce výsledky.</li>
                 <li>V časti Správa je dostupné späť poslednú zmenu, export, stiahnutie zálohy a import zálohy.</li>
               </ul>
@@ -1789,12 +1798,12 @@
         const closeAsDraw = scoreForm.querySelector("[data-close-draw]");
         if (closeAsDraw) {
           closeAsDraw.addEventListener("click", async () => {
-            if (!window.confirm("Uzavrieť odložený zápas ako remízu 8:8?")) return;
+            if (!window.confirm(`Uzavrieť odložený zápas ako remízu ${drawScoreLabel(match)}?`)) return;
             if (!(await confirmRemoteFreshness())) return;
             const before = snapshotCoreState();
             if (!prepareForResultChange(match)) return;
             match.status = "scheduled";
-            match.result = drawResult();
+            match.result = drawResult(match);
             recordAudit(before, "Uzavretie odloženého zápasu remízou", {
               matchId: match.id,
               matchLabel: match.label,
@@ -1837,7 +1846,7 @@
         `;
         const drawBlock = drawAllowed ? `
           <div class="mode-block" data-mode-block="draw">
-            <p class="muted small">Remíza / nedohrané sa uloží ako 8:8. Nepočíta sa žiadna výhra ani prehra.</p>
+            <p class="muted small">Remíza / nedohrané sa uloží ako ${drawScoreLabel(match)}. Nepočíta sa žiadna výhra ani prehra.</p>
           </div>
         ` : "";
         if (match.format === "set4") {
@@ -1908,21 +1917,31 @@
             <button type="button" class="secondary" data-cancel>Zrušiť</button>
             ${hasResult ? `<button type="button" class="danger" data-clear>Vymazať</button>` : ""}
             ${canDefer ? `<button type="button" class="warning" data-defer>Odložiť</button>` : ""}
-            ${canCloseDraw ? `<button type="button" class="secondary" data-close-draw>Remíza 8:8</button>` : ""}
+            ${canCloseDraw ? `<button type="button" class="secondary" data-close-draw>Remíza ${drawScoreLabel(match)}</button>` : ""}
             <button type="submit">Uložiť</button>
           </div>
         `;
       }
 
-      function drawResult() {
+      function drawResult(match) {
+        const score = drawScore(match);
         return {
           mode: "draw",
           isDraw: true,
-          score1: 8,
-          score2: 8,
-          scoreLabel: "8:8 remíza",
+          score1: score,
+          score2: score,
+          scoreLabel: `${score}:${score} remíza`,
           savedAt: new Date().toISOString()
         };
+      }
+
+      function drawScore(match) {
+        return match.format === "americano24" ? PADEL_AMERICANO_TOTAL_GAMES / 2 : 8;
+      }
+
+      function drawScoreLabel(match) {
+        const score = drawScore(match);
+        return `${score}:${score}`;
       }
 
       function readAndValidateResult(match, form) {
@@ -1944,8 +1963,9 @@
               }
             };
           }
-          const score1 = winnerSide === 0 ? 16 : 0;
-          const score2 = winnerSide === 1 ? 16 : 0;
+          const target = forfeitTarget(match);
+          const score1 = winnerSide === 0 ? target : 0;
+          const score2 = winnerSide === 1 ? target : 0;
           return {
             ok: true,
             result: {
@@ -1959,21 +1979,12 @@
         }
         if (mode === "draw") {
           if (!canDraw(match)) return { ok: false, message: "Remíza je povolená iba v skupinách a padeli." };
-          return {
-            ok: true,
-            result: {
-              mode,
-              isDraw: true,
-              score1: 8,
-              score2: 8,
-              scoreLabel: "8:8 remíza"
-            }
-          };
+          return { ok: true, result: { ...drawResult(match), mode } };
         }
-        if (match.format === "tb16") {
+        if (match.format === "tb15" || match.format === "tb16") {
           const score1 = toInt(form.get("score1"));
           const score2 = toInt(form.get("score2"));
-          const valid = validateTiebreak(score1, score2, 16);
+          const valid = validateTiebreak(score1, score2, match.format === "tb15" ? TENNIS_GROUP_TIEBREAK_TARGET : 16);
           if (!valid.ok) return valid;
           return {
             ok: true,
@@ -1982,6 +1993,23 @@
               score1,
               score2,
               winnerSide: score1 > score2 ? 0 : 1,
+              scoreLabel: `${score1}:${score2}`
+            }
+          };
+        }
+        if (match.format === "americano24") {
+          const score1 = toInt(form.get("score1"));
+          const score2 = toInt(form.get("score2"));
+          const valid = validateAmericano(score1, score2, PADEL_AMERICANO_TOTAL_GAMES);
+          if (!valid.ok) return valid;
+          const isDraw = score1 === score2;
+          return {
+            ok: true,
+            result: {
+              mode: "normal",
+              score1,
+              score2,
+              ...(isDraw ? { isDraw: true } : { winnerSide: score1 > score2 ? 0 : 1 }),
               scoreLabel: `${score1}:${score2}`
             }
           };
@@ -2022,6 +2050,12 @@
         return match.phase === "group" || match.phase === "padel";
       }
 
+      function forfeitTarget(match) {
+        if (match.format === "tb15") return TENNIS_GROUP_TIEBREAK_TARGET;
+        if (match.format === "americano24") return PADEL_AMERICANO_TOTAL_GAMES;
+        return 16;
+      }
+
       function validateTiebreak(score1, score2, target) {
         if (!Number.isInteger(score1) || !Number.isInteger(score2) || score1 < 0 || score2 < 0) {
           return { ok: false, message: "Zadaj platné nezáporné body." };
@@ -2035,6 +2069,16 @@
         }
         if (loser >= target - 1 && winner !== loser + 2) {
           return { ok: false, message: "Po zhode musí byť rozdiel presne 2 body." };
+        }
+        return { ok: true };
+      }
+
+      function validateAmericano(score1, score2, total) {
+        if (!Number.isInteger(score1) || !Number.isInteger(score2) || score1 < 0 || score2 < 0) {
+          return { ok: false, message: "Zadaj platné nezáporné hry." };
+        }
+        if (score1 + score2 !== total) {
+          return { ok: false, message: `Padel Americano musí mať spolu presne ${total} hier.` };
         }
         return { ok: true };
       }
@@ -2106,7 +2150,7 @@
           phase: "group",
           group,
           label: `Skupina ${group} - zápas ${index + 1}`,
-          format: "tb16",
+          format: "tb15",
           side1: { players: [ids[a]] },
           side2: { players: [ids[b]] }
         }));
@@ -2196,7 +2240,7 @@
           phase: "padel",
           label: `Padel - kolo ${round}`,
           round,
-          format: "tb16",
+          format: "americano24",
           side1: { players: best[0] },
           side2: { players: best[1] }
         };

@@ -45,9 +45,9 @@ Poznamka: appka aktualne pouziva lokalny storage prefix `tenis-padel-turnaj-v2`.
 
 - Domov: vytvorenie alebo otvorenie turnaja, zoznam lokalne znamych turnajov a kopirovanie odkazu na pravidla.
 - Tenis: skupiny, playoff, live tabulky a bodovanie za umiestnenie `12, 10, 8, 7, 5, 4, 2, 1`.
-- Padel Americano: automaticke generovanie aktualneho kola, prelosovanie aktualnej stvorice a vyrovnavanie poctu zapasov.
-- Padel body: surove padel skore urci padel poradie, do celkovej tabulky ide rovnake umiestnovacie bodovanie ako v tenise.
-- Vysledky: zapas sa da zadat mimo poradia, odlozit bez bodov, dopisat neskor alebo uzavriet ako remizu `8:8`.
+- Padel Americano: automaticke generovanie aktualneho kola, prelosovanie aktualnej stvorice a vyrovnavanie poctu zapasov; hra sa pevny sucet `24` hier.
+- Padel body: surove padel hry urcia padel poradie, do celkovej tabulky ide rovnake umiestnovacie bodovanie ako v tenise.
+- Vysledky: zapas sa da zadat mimo poradia, odlozit bez bodov, dopisat neskor alebo uzavriet ako remizu.
 - Losovanie: start turnaja, padel kolo a prelosovanie maju kratku shuffle animaciu.
 
 ## Supabase setup
@@ -89,11 +89,11 @@ Toto je zamerne verejne editovatelne nastavenie: kazdy, kto ma URL stranky a poz
 
 - Chybny vysledok oprav tapnutim na dokonceny zapas.
 - Zapas sa da odlozit bez bodov a dopisat neskor.
-- Ak sa k odlozenemu zapasu uz nevratite, uzavri ho ako remizu `8:8`.
+- Ak sa k odlozenemu zapasu uz nevratite, uzavri ho ako remizu. Tenisova skupina sa ulozi ako `8:8`, padel ako `12:12`.
 - Kontumacia je povolena vo vsetkych zapasoch.
-- Kontumacia sa ulozi ako `16:0` pri tiebreaku alebo `4:0` pri playoff sete.
+- Kontumacia sa ulozi ako `15:0` v tenisovej skupine, `24:0` v padeli alebo `4:0` pri playoff sete.
 - Remiza / nedohrane je povolena iba v tenisovych skupinach a v padeli.
-- Remiza / nedohrane sa ulozi ako `8:8` a neprida vyhru ani prehru.
+- Remiza / nedohrane neprida vyhru ani prehru.
 - Playoff musi mat vitaza.
 - V appke je dostupne `Spat poslednu zmenu`, export, stiahnutie zalohy a import zalohy.
 
